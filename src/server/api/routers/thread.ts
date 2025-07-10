@@ -26,7 +26,7 @@ export const threadRouter = createTRPCRouter({
   getThreads: publicProcedure.query(async () => {
     const threads = await db.thread.findMany({
       orderBy: {
-        updatedAt: "desc",
+        updatedAt: "asc",
       },
       include: {
         messages: true,
@@ -42,7 +42,7 @@ export const threadRouter = createTRPCRouter({
         value: z
           .string()
           .min(1, "Value is required")
-          .max(100, "Value is too long"),
+          .max(1000, "Value is too long"),
       }),
     )
     .mutation(async ({ input }) => {

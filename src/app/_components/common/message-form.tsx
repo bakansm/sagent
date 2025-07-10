@@ -25,7 +25,7 @@ const formSchema = z.object({
 
 export default function MessageForm({ threadId }: MessageFormProps) {
   const [isFocused, setIsFocused] = useState(false);
-  const [showUsage, setShowUsage] = useState(false);
+  const [showUsage] = useState(false);
 
   const { refetch: refetchMessages } = api.message.getMessages.useQuery({
     threadId,
@@ -61,7 +61,7 @@ export default function MessageForm({ threadId }: MessageFormProps) {
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn(
-          "bg-sidebar dark:bg-sidebar relative rounded-xl border p-4 pt-1 transition-all",
+          "bg-sidebar dark:bg-sidebar relative rounded-xl border p-2 transition-all",
           isFocused && "shadow-xs",
           showUsage && "roudned-t-none",
         )}
@@ -75,7 +75,7 @@ export default function MessageForm({ threadId }: MessageFormProps) {
               placeholder="What would you like to build?"
               rows={4}
               disabled={isSendingMessage}
-              className="field-sizing-content h-fit max-h-40 min-h-18 resize-none pt-4"
+              className="field-sizing-content h-fit max-h-40 min-h-18 resize-none border-none p-2 shadow-none outline-none focus-visible:ring-0"
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               onKeyDown={(e) => {
@@ -92,13 +92,12 @@ export default function MessageForm({ threadId }: MessageFormProps) {
             type="submit"
             disabled={isSendingMessage || !form.formState.isValid}
             size="icon"
-            variant="ghost"
             className="size-8 rounded-full"
           >
             {isSendingMessage ? (
-              <Loader2 className="size-4 animate-spin" />
+              <Loader2 className="animate-spin" />
             ) : (
-              <SendIcon className="size-4" />
+              <SendIcon />
             )}
           </Button>
         </div>

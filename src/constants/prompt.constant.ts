@@ -21,7 +21,7 @@ export const PROMPT = {
     - Never use "@" inside readFiles or other file system operations — it will fail
 
     File Safety Rules:
-    - Only use "use client" in files that need it (e.g. use React hooks or browser APIs).
+    - ALWAYS add "use client" to the TOP, THE FIRST LINE of app/page.tsx and any other relevant files which use browser APIs or react hooks
 
     Runtime Execution (Strict Rules):
     - The development server is already running on port 3000 with hot reload enabled.
@@ -61,7 +61,6 @@ export const PROMPT = {
     - You MUST use the terminal tool to install any packages
     - Do not print code inline
     - Do not wrap code in backticks
-    - You can use any online image url for the images
     - Use backticks (\`) for all strings to support embedded quotes safely.
     - Do not assume existing file contents — use readFiles if unsure
     - Do not include any commentary, explanation, or markdown — use only tool outputs
@@ -114,4 +113,59 @@ export const PROMPT = {
 
     This is the ONLY valid way to terminate your task. If you omit or alter this section, the task will be considered incomplete and will continue unnecessarily.
 `,
+  RESPONSE_PROMPT: `
+    You are the final agent in a multi-agent system.
+    Your job is to generate a short, user-friendly message explaining what was just built, based on the <task_summary> provided by the other agents.
+    The application is a custom Next.js app tailored to the user's request.
+    Reply in a casual tone, as if you're wrapping up the process for the user. No need to mention the <task_summary> tag.
+    Your message should be 1 to 3 sentences, describing what the app does or what was changed, as if you're saying "Here's what I built for you."
+    Do not add code, tags, or metadata. Only return the plain text response.
+`,
+  FRAGMENT_TITLE_PROMPT: `
+    You are an assistant that generates a short, descriptive title for a code fragment based on its <task_summary>.
+    The title should be:
+      - Relevant to what was built or changed
+      - Max 3 words
+      - Written in title case (e.g., "Landing Page", "Chat Widget")
+      - No punctuation, quotes, or prefixes
+
+    Only return the raw title.
+`,
+  TEMPLATE_PROMPT: [
+    {
+      title: "Build a Netflix clone",
+      prompt:
+        "Build a Netflix-style homepage with a hero banner (use a nice, dark-mode compatible gradient here), movie sections, responsive cards, and a modal for viewing details using mock data and local state.",
+    },
+    {
+      title: "Build an admin dashboard",
+      prompt:
+        "Create an admin dashboard with a sidebar, stat cards, a chart placeholder, and a basic table with filter and pagination using local state. Use clear visual grouping and balance in your design for a modern, professional look.",
+    },
+    {
+      title: "Build a Spotify clone",
+      prompt:
+        "Build a Spotify-style music player with a sidebar for playlists, a main area for song details, and playback controls. Use local state for managing playback and song selection. Prioritize layout balance and intuitive control placement for a smooth user experience.",
+    },
+    {
+      title: "Build an Airbnb clone",
+      prompt:
+        "Build an Airbnb-style listings grid with mock data, filter sidebar, and a modal with property details using local state. Use card spacing, soft shadows, and clean layout for a welcoming design.",
+    },
+    {
+      title: "Build a store page",
+      prompt:
+        "Build a store page with category filters, a product grid, and local cart logic to add and remove items. Focus on clear typography, spacing and button states for a great e-commerce UI.",
+    },
+    {
+      title: "Build a Youtube clone",
+      prompt:
+        "Build a Youtube-style homepage with mock video thumbnails, a category sidebar and a modal preview with title and description using local state. Ensure clean alignment and well-organized grid layout.",
+    },
+    {
+      title: "Build a kanban board",
+      prompt:
+        "Build a kanban board with drag-and-drop using react-beautiful-dnd and support for adding and removing tasks with local state. Use consistent spacing, column widths, and hover effects for a polished UI.",
+    },
+  ],
 } as const;

@@ -1,6 +1,9 @@
+"use client";
+
+import { getSandbox } from "@/inngest/utils";
 import type { Fragment } from "@prisma/client";
 import { ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 
 interface FragmentWebProps {
@@ -14,6 +17,13 @@ export default function FragmentWeb({ data }: FragmentWebProps) {
   const onRefresh = () => {
     setFragmentKey((prev) => prev + 1);
   };
+
+  useEffect(() => {
+    const fetchSandbox = async () => {
+      await getSandbox(data.sandboxId);
+    };
+    fetchSandbox();
+  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(data.sandboxUrl);

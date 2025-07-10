@@ -24,17 +24,14 @@ export const callAgent = inngest.createFunction(
   { event: "agent/call" },
   async ({ event, step }) => {
     const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create("sagent-nextjs");
+      const sandbox = await Sandbox.create("sagent-nextjs", {
+        timeoutMs: 1000 * 60 * 60,
+      });
       return sandbox.sandboxId;
     });
 
     const codeAgent = createAgent<AgentState>({
       name: "code-agent",
-      // description: `
-      //   You're an expert Next.js developer.
-      //   You write maintainable, readable and production-ready code.
-      //   You write simple Next.js and React snippets.
-      // `,
       description: "An expert coding agent",
       system: PROMPT.SYSTEM,
 
@@ -46,7 +43,7 @@ export const callAgent = inngest.createFunction(
       //   },
       // }),
       model: gemini({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         apiKey: env.GEMINI_API_KEY,
         defaultParameters: {
           generationConfig: {
@@ -210,6 +207,7 @@ export const callAgent = inngest.createFunction(
           type: "RESULT",
           fragments: {
             create: {
+              sandboxId,
               sandboxUrl,
               title: "Fragment",
               files: result.state.data.files,
@@ -221,6 +219,7 @@ export const callAgent = inngest.createFunction(
 
     return {
       url: sandboxUrl,
+      sandboxId,
       title: "Fragment",
       files: result.state.data.files,
       summary: result.state.data.summary,

@@ -96,7 +96,7 @@ export function FileExplorer({ files }: FileExplorerProps) {
 
   const handleCopyPath = useCallback(() => {
     if (activeFile) {
-      navigator.clipboard.writeText(activeFile);
+      navigator.clipboard.writeText(files[activeFile] ?? "");
       setIsCopied(true);
       setTimeout(() => {
         setIsCopied(false);

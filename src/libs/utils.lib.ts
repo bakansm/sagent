@@ -1,4 +1,3 @@
-import type { FileCollection } from "@/app/_components/common/file-explorer";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -17,47 +16,73 @@ interface TreeNode {
   [key: string]: TreeNode | null;
 }
 
-export function convertFilesToTreeView(files: FileCollection) {
+export function convertFilesToTreeView(
+  files: Record<string, string>,
+): TreeViewItem[] {
+  // Define proper type for tree structure
+  interface TreeNode {
+    [key: string]: TreeNode | null;
+  }
+
+  // Build a tree structure first
   const tree: TreeNode = {};
 
-  const sortedPath = Object.keys(files).sort();
+  // Sort files to ensure consistent ordering
+  const sortedPaths = Object.keys(files).sort();
 
-  for (const path of sortedPath) {
-    const parts = path.split("/");
-    let currentNode: TreeNode = tree;
+  for (const filePath of sortedPaths) {
+    const parts = filePath.split("/");
+    let current = tree;
 
-    for (const part of parts) {
-      if (!currentNode[part]) {
-        currentNode[part] = {};
+    // Navigate/create the tree structure
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (part) {
+        if (!current[part]) {
+          current[part] = {};
+        }
+        current = current[part];
       }
-      currentNode = currentNode[part] as TreeNode;
     }
 
-    const fileName = parts.pop();
+    // Add the file (leaf node)
+    const fileName = parts[parts.length - 1];
     if (fileName) {
-      currentNode[fileName] = null;
+      current[fileName] = null; // null indicates it's a file
     }
   }
 
-  const convertNode = (
+  // Convert tree structure to TreeItem format
+  function convertNode(
     node: TreeNode,
     name?: string,
-  ): TreeViewItem[] | TreeViewItem => {
+  ): TreeViewItem[] | TreeViewItem {
     const entries = Object.entries(node);
 
     if (entries.length === 0) {
       return name || "";
     }
 
-    const children = entries.map(([key, value]) => {
+    const children: TreeViewItem[] = [];
+
+    for (const [key, value] of entries) {
       if (value === null) {
-        return key;
+        // It's a file
+        children.push(key);
+      } else {
+        // It's a folder
+        const subTree = convertNode(value, key);
+        if (Array.isArray(subTree)) {
+          children.push([key, ...subTree]);
+        } else {
+          children.push([key, subTree]);
+        }
       }
-      return convertNode(value, key);
-    });
+    }
 
-    return [name || "", ...children] as TreeViewItem[];
-  };
+    return children;
+  }
 
-  return convertNode(tree);
+  const result = convertNode(tree);
+  return Array.isArray(result) ? result : [result];
 }

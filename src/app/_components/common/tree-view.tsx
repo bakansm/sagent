@@ -72,49 +72,60 @@ interface TreeProps {
   selectedValue?: string | null;
   onSelect?: (value: string) => void;
   parentPath: string;
+  level?: number; // add level for indentation
 }
 
-function Tree({ item, selectedValue, onSelect, parentPath }: TreeProps) {
-  const [name, ...items] = Array.isArray(item) ? item : [item];
-  const currentPath = parentPath ? `${parentPath}/${name}` : name;
+function Tree({
+  item,
+  selectedValue,
+  onSelect,
+  parentPath,
+  level = 0,
+}: TreeProps) {
+  const indent = { paddingLeft: `${level * 16}px` };
 
-  if (!items.length) {
+  if (typeof item === "string") {
+    const currentPath = parentPath ? `${parentPath}/${item}` : item;
     const isSelected = selectedValue === currentPath;
-
     return (
       <SidebarMenuButton
         isActive={isSelected}
-        className="data-[active=true]:bg-transparent"
+        style={indent}
         onClick={() => onSelect?.(currentPath)}
       >
         <FileIcon />
-        <span>{name}</span>
+        <span>{item}</span>
       </SidebarMenuButton>
     );
   }
 
+  // item is [folderName, ...children]
+  const [name, ...children] = item;
+  const currentPath = parentPath ? `${parentPath}/${name}` : name;
+
   return (
     <SidebarMenuItem>
       <Collapsible
-        className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
+        className="group/collapsible [&[data-state=open]>button>svg:last-child]:rotate-90"
         defaultOpen
       >
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton>
+          <SidebarMenuButton style={indent}>
             <FolderIcon />
             <span className="truncate">{name}</span>
-            <ChevronRightIcon className="transition-transform" />
+            <ChevronRightIcon className="ml-auto transition-transform" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="flex flex-col gap-y-1">
-            {items.map((item, index) => (
+            {children.map((child, index) => (
               <Tree
                 key={index}
-                item={item}
+                item={child}
                 selectedValue={selectedValue}
                 onSelect={onSelect}
                 parentPath={currentPath}
+                level={level + 1}
               />
             ))}
           </div>

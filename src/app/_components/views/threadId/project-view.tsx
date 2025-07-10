@@ -31,9 +31,6 @@ export default function ProjectView({ threadId }: ProjectViewProps) {
           minSize={20}
           className="flex min-h-0 flex-col"
         >
-          {/* <Suspense fallback={<div>Loading Project...</div>}>
-            <ThreadHeader threadId={threadId} />
-          </Suspense> */}
           <Suspense fallback={<div>Loading Messages...</div>}>
             <MessageContainer
               threadId={threadId}
@@ -42,7 +39,7 @@ export default function ProjectView({ threadId }: ProjectViewProps) {
             />
           </Suspense>
         </ResizablePanel>
-        <ResizableHandle />
+        <ResizableHandle className="hover:bg-primary transition-colors" />
         <ResizablePanel
           defaultSize={65}
           minSize={50}
@@ -54,17 +51,17 @@ export default function ProjectView({ threadId }: ProjectViewProps) {
             value={tabState}
             onValueChange={(value) => setTabState(value as "preview" | "code")}
           >
-            <TabsList>
-              <TabsTrigger value="preview" className="rounded-md">
-                <EyeIcon />
-                <span>Preview</span>
-              </TabsTrigger>
-              <TabsTrigger value="code" className="rounded-md">
-                <CodeIcon />
-                <span>Code</span>
-              </TabsTrigger>
-            </TabsList>
-            <div className="ml-auto flex items-center gap-x-2">
+            <div className="flex w-full items-center justify-between border-b p-2">
+              <TabsList>
+                <TabsTrigger value="preview" className="rounded-md">
+                  <EyeIcon />
+                  <span>Preview</span>
+                </TabsTrigger>
+                <TabsTrigger value="code" className="rounded-md">
+                  <CodeIcon />
+                  <span>Code</span>
+                </TabsTrigger>
+              </TabsList>
               <Button variant="default" asChild size={"sm"}>
                 <Link href={`/pricing `}>
                   <CrownIcon /> Upgrade

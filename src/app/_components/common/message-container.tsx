@@ -3,7 +3,7 @@
 import MessageCard from "@/app/_components/common/message-card";
 import { api } from "@/trpc/react";
 import type { Fragment } from "@prisma/client";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import MessageForm from "./message-form";
 import MessageLoading from "./message-loading";
 import ThreadHeader from "./thread-header";
@@ -20,7 +20,8 @@ export default function MessageContainer({
   setActiveFragment,
 }: MessageContainerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [messages] = api.message.getMessages.useSuspenseQuery(
+  const lastAssistantMessageIdRef = useRef<string | null>(null);
+  const { data: messages } = api.message.getMessages.useQuery(
     {
       threadId,
     },
@@ -29,15 +30,18 @@ export default function MessageContainer({
     },
   );
 
-  // useEffect(() => {
-  //   const lastAssistantMessage = [...messages]
-  //     .reverse()
-  //     .find((message) => message.role === "ASSISTANT");
-
-  //   if (lastAssistantMessage) {
-  //     setActiveFragment(lastAssistantMessage.fragments);
-  //   }
-  // }, [messages, setActiveFragment]);
+  useEffect(() => {
+    const lastAssistantMessage = [...(messages ?? [])]
+      .reverse()
+      .find((message) => message.role === "ASSISTANT");
+    if (
+      lastAssistantMessage?.fragments &&
+      lastAssistantMessage.fragments.id !== lastAssistantMessageIdRef.current
+    ) {
+      setActiveFragment(lastAssistantMessage.fragments);
+      lastAssistantMessageIdRef.current = lastAssistantMessage.id;
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -45,7 +49,12 @@ export default function MessageContainer({
     }
   }, [messages?.length]);
 
-  const isLastUserMessage = messages?.[messages?.length - 1]?.role === "USER";
+  const isLastUserMessage = useMemo(() => {
+    return messages?.[messages?.length - 1]?.role === "USER";
+  }, [messages]);
+
+  console.log("messages: ", messages);
+  console.log("isLastUserMessage: ", isLastUserMessage);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

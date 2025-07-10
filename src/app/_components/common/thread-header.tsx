@@ -22,7 +22,7 @@ interface ThreadHeaderProps {
 }
 
 export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
-  const [thread] = api.thread.getThread.useSuspenseQuery({ threadId });
+  const { data: thread } = api.thread.getThread.useQuery({ threadId });
 
   const { setTheme, theme } = useTheme();
 
@@ -42,7 +42,9 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
               height={18}
               className="shrink-0"
             />
-            <span className="text-sm font-medium">{thread.name}</span>
+            <span className="text-sm font-medium">
+              {thread?.name ?? "Untitled"}
+            </span>
             <ChevronDownIcon />
           </Button>
         </DropdownMenuTrigger>
