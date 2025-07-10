@@ -1,0 +1,1 @@
+Build a landing page with earch part in it's own component.
