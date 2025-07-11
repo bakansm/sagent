@@ -27,7 +27,7 @@ export function ShimmerMessage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [shimmerMessages.length]);
 
   return (
     <div className="flex items-center gap-2">

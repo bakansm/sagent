@@ -41,20 +41,17 @@ export default function MessageContainer({
       setActiveFragment(lastAssistantMessage.fragments);
       lastAssistantMessageIdRef.current = lastAssistantMessage.id;
     }
-  }, [messages]);
+  }, [messages, setActiveFragment]);
 
   useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages?.length]);
+  }, [messages, bottomRef]);
 
   const isLastUserMessage = useMemo(() => {
     return messages?.[messages?.length - 1]?.role === "USER";
   }, [messages]);
-
-  console.log("messages: ", messages);
-  console.log("isLastUserMessage: ", isLastUserMessage);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

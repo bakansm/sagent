@@ -27,6 +27,8 @@ export default function MessageForm({ threadId }: MessageFormProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [showUsage] = useState(false);
 
+  const { data: user } = api.user.getUser.useQuery();
+
   const { refetch: refetchMessages } = api.message.getMessages.useQuery({
     threadId,
   });
@@ -78,16 +80,21 @@ export default function MessageForm({ threadId }: MessageFormProps) {
               className="field-sizing-content h-fit max-h-40 min-h-18 resize-none border-none p-2 shadow-none outline-none focus-visible:ring-0"
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              onKeyDown={(e) => {
+              onKeyDown={async (e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  form.handleSubmit(onSubmit)();
+                  await form.handleSubmit(onSubmit)();
                 }
               }}
             />
           )}
         />
-        <div className="flex items-end justify-end gap-x-2 pt-2">
+        <div className="flex items-end justify-between gap-x-2 pt-2">
+          <div className="flex items-center gap-x-2">
+            <span className="text-muted-foreground text-sm">
+              Credits: {user?.credits ?? 0}
+            </span>
+          </div>
           <Button
             type="submit"
             disabled={isSendingMessage || !form.formState.isValid}

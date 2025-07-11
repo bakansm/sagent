@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getLanguageFromFileExtension(filename: string) {
   const extension = filename.split(".").pop()?.toLowerCase();
-  return extension || "text";
+  return extension ?? "text";
 }
 
 export type TreeViewItem = string | [string, ...TreeViewItem[]];
@@ -19,11 +19,6 @@ interface TreeNode {
 export function convertFilesToTreeView(
   files: Record<string, string>,
 ): TreeViewItem[] {
-  // Define proper type for tree structure
-  interface TreeNode {
-    [key: string]: TreeNode | null;
-  }
-
   // Build a tree structure first
   const tree: TreeNode = {};
 
@@ -38,9 +33,7 @@ export function convertFilesToTreeView(
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (part) {
-        if (!current[part]) {
-          current[part] = {};
-        }
+        current[part] ??= {};
         current = current[part];
       }
     }
@@ -60,7 +53,7 @@ export function convertFilesToTreeView(
     const entries = Object.entries(node);
 
     if (entries.length === 0) {
-      return name || "";
+      return name ?? "";
     }
 
     const children: TreeViewItem[] = [];

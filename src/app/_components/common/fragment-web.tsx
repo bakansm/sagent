@@ -20,13 +20,15 @@ export default function FragmentWeb({ data }: FragmentWebProps) {
 
   useEffect(() => {
     const fetchSandbox = async () => {
+      if (!data.sandboxId) return;
       await getSandbox(data.sandboxId);
     };
-    fetchSandbox();
-  }, []);
+    void fetchSandbox();
+  }, [data.sandboxId]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(data.sandboxUrl);
+  const handleCopy = async () => {
+    if (!data.sandboxUrl) return;
+    await navigator.clipboard.writeText(data.sandboxUrl);
     setCopied(true);
     setTimeout(() => {
       setCopied(false);

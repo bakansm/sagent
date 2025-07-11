@@ -2,15 +2,29 @@ import z from "zod";
 
 import { inngest } from "@/inngest/client";
 import { db } from "@/libs/db.lib";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
 export const threadRouter = createTRPCRouter({
-  getThread: publicProcedure
+  getThread: protectedProcedure
     .input(z.object({ threadId: z.string().min(1, "Thread ID is required") }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      if (!ctx.session?.userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+
       const thread = await db.thread.findUnique({
         where: { id: input.threadId },
+        include: {
+          messages: {
+            where: {
+              userId: ctx.session?.userId,
+            },
+          },
+        },
       });
 
       if (!thread) {
@@ -23,20 +37,31 @@ export const threadRouter = createTRPCRouter({
       return thread;
     }),
 
-  getThreads: publicProcedure.query(async () => {
+  getThreads: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.session?.userId) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "User not authenticated",
+      });
+    }
+
     const threads = await db.thread.findMany({
       orderBy: {
         updatedAt: "asc",
       },
       include: {
-        messages: true,
+        messages: {
+          where: {
+            userId: ctx.session?.userId,
+          },
+        },
       },
     });
 
     return threads;
   }),
 
-  createThread: publicProcedure
+  createThread: protectedProcedure
     .input(
       z.object({
         value: z
@@ -45,17 +70,46 @@ export const threadRouter = createTRPCRouter({
           .max(1000, "Value is too long"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { value } = input;
+
+      if (!ctx.session?.userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+
+      const user = await db.user.findUnique({
+        where: {
+          id: ctx.session?.userId,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      if (user.credits <= 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "User has no credits",
+        });
+      }
 
       const createdThread = await db.thread.create({
         data: {
           name: "New Thread",
+          userId: ctx.session?.userId,
           messages: {
             create: {
               content: value,
               role: "USER",
               type: "RESULT",
+              userId: ctx.session?.userId,
             },
           },
         },
@@ -68,6 +122,7 @@ export const threadRouter = createTRPCRouter({
           data: {
             value: value,
             threadId: createdThread.id,
+            userId: ctx.session?.userId,
           },
         },
       ]);

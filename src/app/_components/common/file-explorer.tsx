@@ -21,9 +21,7 @@ import {
 } from "../ui/resizable";
 import TreeView from "./tree-view";
 
-export type FileCollection = {
-  [path: string]: string;
-};
+export type FileCollection = Record<string, string>;
 
 interface FileExplorerProps {
   files: FileCollection;
@@ -94,15 +92,15 @@ export function FileExplorer({ files }: FileExplorerProps) {
     return fileKeys[0];
   });
 
-  const handleCopyPath = useCallback(() => {
+  const handleCopyPath = useCallback(async () => {
     if (activeFile) {
-      navigator.clipboard.writeText(files[activeFile] ?? "");
+      await navigator.clipboard.writeText(files[activeFile] ?? "");
       setIsCopied(true);
       setTimeout(() => {
         setIsCopied(false);
       }, 2000);
     }
-  }, [activeFile]);
+  }, [activeFile, files]);
 
   const treeView = useMemo(() => {
     return convertFilesToTreeView(files);

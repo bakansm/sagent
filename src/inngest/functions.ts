@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { PROMPT } from "@/constants/prompt.constant";
 import { env } from "@/env";
 import { Sandbox } from "@e2b/code-interpreter";
@@ -16,7 +17,7 @@ import { getSandbox, lastAssistantTextMessageContent } from "./utils";
 
 interface AgentState {
   summary: string;
-  files: { [path: string]: string };
+  files: Record<string, string>;
 }
 
 export const callAgent = inngest.createFunction(
@@ -35,13 +36,6 @@ export const callAgent = inngest.createFunction(
       description: "An expert coding agent",
       system: PROMPT.SYSTEM,
 
-      // model: openai({
-      //   model: "gpt-4.1",
-      //   apiKey: env.OPENAI_API_KEY,
-      //   defaultParameters: {
-      //     temperature: 0.1,
-      //   },
-      // }),
       model: gemini({
         model: "gemini-2.5-pro",
         apiKey: env.GEMINI_API_KEY,
@@ -75,10 +69,11 @@ export const callAgent = inngest.createFunction(
 
                 return result.stdout;
               } catch (e) {
+                const errorMessage = e instanceof Error ? e.message : String(e);
                 console.error(
-                  `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`,
+                  `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`,
                 );
-                return `Command failed: ${e} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+                return `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
               }
             });
           },
@@ -108,7 +103,9 @@ export const callAgent = inngest.createFunction(
 
                   return updatedFiles;
                 } catch (error) {
-                  return "Error: " + error;
+                  const errorMessage =
+                    error instanceof Error ? error.message : String(error);
+                  return "Error: " + errorMessage;
                 }
               },
             );
@@ -140,7 +137,9 @@ export const callAgent = inngest.createFunction(
                 }
                 return JSON.stringify(contents);
               } catch (error) {
-                return "Error: " + error;
+                const errorMessage =
+                  error instanceof Error ? error.message : String(error);
+                return "Error: " + errorMessage;
               }
             });
           },
@@ -195,6 +194,7 @@ export const callAgent = inngest.createFunction(
             role: "ASSISTANT",
             type: "ERROR",
             threadId: event.data.threadId,
+            userId: event.data.userId,
           },
         });
       }
@@ -205,6 +205,7 @@ export const callAgent = inngest.createFunction(
           threadId: event.data.threadId,
           role: "ASSISTANT",
           type: "RESULT",
+          userId: event.data.userId,
           fragments: {
             create: {
               sandboxId,

@@ -4,6 +4,7 @@ import { PROMPT } from "@/constants/prompt.constant";
 import { cn } from "@/libs/utils.lib";
 import { api } from "@/trpc/react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { usePrivy } from "@privy-io/react-auth";
 import { Loader2Icon, SendIcon } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -26,6 +27,10 @@ export default function HomeView() {
   const router = useRouter();
   const [isFocused, setIsFocused] = useState(false);
   const [showUsage] = useState(false);
+
+  const { authenticated, login } = usePrivy();
+
+  const { data: user } = api.user.getUser.useQuery();
 
   const { mutateAsync: createThread, isPending: isCreatingThread } =
     api.thread.createThread.useMutation({
@@ -53,6 +58,10 @@ export default function HomeView() {
   };
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    if (!authenticated) {
+      login();
+      return;
+    }
     await createThread({
       value: data.value,
     });
@@ -96,16 +105,21 @@ export default function HomeView() {
                     className="field-sizing-content h-fit max-h-40 min-h-18 resize-none border-none p-2 shadow-none outline-none focus-visible:ring-0"
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
-                    onKeyDown={(e) => {
+                    onKeyDown={async (e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        form.handleSubmit(onSubmit)();
+                        await form.handleSubmit(onSubmit)();
                       }
                     }}
                   />
                 )}
               />
-              <div className="flex items-end justify-end gap-x-2 pt-2">
+              <div className="flex items-end justify-between gap-x-2 pt-2">
+                <div className="flex items-center gap-x-2">
+                  <span className="text-muted-foreground text-sm">
+                    Credits: {user?.credits ?? 0}
+                  </span>
+                </div>
                 <Button
                   type="submit"
                   disabled={isCreatingThread || !form.formState.isValid}

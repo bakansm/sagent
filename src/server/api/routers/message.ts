@@ -2,18 +2,26 @@ import z from "zod";
 
 import { inngest } from "@/inngest/client";
 import { db } from "@/libs/db.lib";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { TRPCError } from "@trpc/server";
 
 export const messageRouter = createTRPCRouter({
-  getMessages: publicProcedure
+  getMessages: protectedProcedure
     .input(z.object({ threadId: z.string().min(1, "Thread ID is required") }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      if (!ctx.session?.userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
       const messages = await db.message.findMany({
         orderBy: {
           updatedAt: "asc",
         },
         where: {
           threadId: input.threadId,
+          userId: ctx.session?.userId,
         },
         include: {
           fragments: true,
@@ -23,7 +31,7 @@ export const messageRouter = createTRPCRouter({
       return messages;
     }),
 
-  sendMessage: publicProcedure
+  sendMessage: protectedProcedure
     .input(
       z.object({
         message: z
@@ -33,8 +41,35 @@ export const messageRouter = createTRPCRouter({
         threadId: z.string().min(1, "Thread ID is required"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { message, threadId } = input;
+
+      if (!ctx.session?.userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User not authenticated",
+        });
+      }
+
+      const user = await db.user.findUnique({
+        where: {
+          id: ctx.session?.userId,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      if (user.credits <= 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "User has no credits",
+        });
+      }
 
       const newMessage = await db.message.create({
         data: {
@@ -42,12 +77,23 @@ export const messageRouter = createTRPCRouter({
           role: "USER",
           type: "RESULT",
           threadId,
+          userId: ctx.session?.userId,
         },
+      });
+
+      await db.user.update({
+        select: {
+          credits: true,
+        },
+        where: {
+          id: ctx.session?.userId,
+        },
+        data: { credits: user.credits - 1 },
       });
 
       await inngest.send({
         name: "agent/call",
-        data: { value: message, threadId },
+        data: { value: message, threadId, userId: ctx.session?.userId },
       });
 
       return newMessage;

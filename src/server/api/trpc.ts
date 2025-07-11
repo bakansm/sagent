@@ -11,8 +11,9 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
-import { auth } from "@/server/auth";
+import { env } from "@/env";
 import { db } from "@/libs/db.lib";
+import { type AuthTokenClaims, PrivyClient } from "@privy-io/server-auth";
 
 /**
  * 1. CONTEXT
@@ -26,12 +27,21 @@ import { db } from "@/libs/db.lib";
  *
  * @see https://trpc.io/docs/server/context
  */
-export const createTRPCContext = async (opts: { headers: Headers }) => {
-  const session = await auth();
 
+const privy = new PrivyClient(
+  env.NEXT_PUBLIC_PRIVY_APP_ID || "",
+  env.PRIVY_APP_SECRET || "",
+);
+
+export const createTRPCContext = async (opts: { headers: Headers }) => {
+  const authToken = opts.headers.get("Authorization")?.replace("Bearer ", "");
+  let userClaim: AuthTokenClaims | undefined = undefined;
+  if (authToken) {
+    userClaim = await privy.verifyAuthToken(authToken);
+  }
   return {
     db,
-    session,
+    session: userClaim,
     ...opts,
   };
 };
@@ -101,6 +111,21 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
   return result;
 });
 
+const isPrivyAuthed = t.middleware(async ({ ctx, next }) => {
+  // check to make sure that the token was valid.
+  // you can add further logic here, such as checking if the user is an admin,
+  // if you added more user context within `createContext` above.
+  if (!ctx.session) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Not authenticated",
+    });
+  }
+  return next({
+    ctx,
+  });
+});
+
 /**
  * Public (unauthenticated) procedure
  *
@@ -120,14 +145,15 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
-  .use(({ ctx, next }) => {
-    if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
-    return next({
-      ctx: {
-        // infers the `session` as non-nullable
-        session: { ...ctx.session, user: ctx.session.user },
-      },
-    });
-  });
+  .use(isPrivyAuthed);
+// .use(({ ctx, next }) => {
+//   if (!ctx) {
+//     throw new TRPCError({ code: "UNAUTHORIZED" });
+//   }
+//   return next({
+//     ctx: {
+//       // infers the `session` as non-nullable
+//       session: { ...ctx.session, user: ctx.session?.userId },
+//     },
+//   });
+// });
