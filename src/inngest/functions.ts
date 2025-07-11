@@ -52,7 +52,7 @@ export const callAgent = inngest.createFunction(
           parameters: z.object({
             command: z.string(),
           }),
-          handler: async ({ command }) => {
+          handler: async ({ command }, { step }: Tool.Options<AgentState>) => {
             return await step?.run("terminal", async () => {
               const buffers = { stdout: "", stderr: "" };
 
@@ -89,7 +89,10 @@ export const callAgent = inngest.createFunction(
               }),
             ),
           }),
-          handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
+          handler: async (
+            { files },
+            { network, step }: Tool.Options<AgentState>,
+          ) => {
             const newFiles = await step?.run(
               "createOrUpdateFiles",
               async () => {
@@ -123,7 +126,7 @@ export const callAgent = inngest.createFunction(
           parameters: z.object({
             files: z.array(z.string()),
           }),
-          handler: async ({ files }) => {
+          handler: async ({ files }, { step }: Tool.Options<AgentState>) => {
             return await step?.run("readFiles", async () => {
               try {
                 const sandbox = await getSandbox(sandboxId);
