@@ -51,24 +51,25 @@ export const messageRouter = createTRPCRouter({
         });
       }
 
-      const user = await db.user.findUnique({
+      let user = await db.user.findUnique({
         where: {
           id: ctx.session?.userId,
         },
       });
 
       if (!user) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "User not found",
+        user = await db.user.create({
+          data: {
+            id: ctx.session?.userId,
+          },
         });
-      }
-
-      if (user.credits <= 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "User has no credits",
-        });
+      } else {
+        if (user.credits <= 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "User has no credits",
+          });
+        }
       }
 
       const newMessage = await db.message.create({
@@ -82,9 +83,6 @@ export const messageRouter = createTRPCRouter({
       });
 
       await db.user.update({
-        select: {
-          credits: true,
-        },
         where: {
           id: ctx.session?.userId,
         },
