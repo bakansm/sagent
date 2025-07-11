@@ -77,7 +77,7 @@ export default function MessageForm({ threadId }: MessageFormProps) {
               placeholder="What would you like to build?"
               rows={4}
               disabled={isSendingMessage}
-              className="field-sizing-content h-fit max-h-40 min-h-18 resize-none border-none p-2 shadow-none outline-none focus-visible:ring-0"
+              className="field-sizing-content h-fit max-h-40 min-h-18 resize-none border-none p-2 shadow-none outline-none focus-visible:ring-0 bg-transparent dark:bg-transparent"
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               onKeyDown={async (e) => {

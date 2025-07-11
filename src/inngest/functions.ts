@@ -5,12 +5,14 @@ import { Sandbox } from "@e2b/code-interpreter";
 import {
   createAgent,
   createNetwork,
+  createState,
   createTool,
   gemini,
   type Tool,
 } from "@inngest/agent-kit";
 
 import { db } from "@/libs/db.lib";
+import type { Message } from "@prisma/client";
 import z from "zod";
 import { inngest } from "./client";
 import { getSandbox, lastAssistantTextMessageContent } from "./utils";
@@ -29,6 +31,43 @@ export const callAgent = inngest.createFunction(
         timeoutMs: 1000 * 60 * 60,
       });
       return sandbox.sandboxId;
+    });
+
+    const previousMessages = await step.run(
+      "get-previous-messages",
+      async () => {
+        const formattedMessages: Message[] = [];
+        const messages: Message[] = await db.message.findMany({
+          where: {
+            threadId: event.data.threadId,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        for (const message of messages) {
+          formattedMessages.push({
+            id: message.id,
+            type: message.type,
+            content: message.content,
+            role: message.role,
+            createdAt: message.createdAt,
+            updatedAt: message.updatedAt,
+            threadId: message.threadId,
+            userId: message.userId,
+          });
+        }
+
+        return formattedMessages;
+      },
+    );
+
+    const state = createState<AgentState>({
+      summary: previousMessages
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n"),
+      files: {},
     });
 
     const codeAgent = createAgent<AgentState>({
@@ -168,6 +207,7 @@ export const callAgent = inngest.createFunction(
       name: "coding-agent-network",
       agents: [codeAgent],
       maxIter: 15,
+      defaultState: state,
       router: async ({ network }) => {
         const summary = network.state.data.summary;
         if (summary) {
@@ -177,7 +217,59 @@ export const callAgent = inngest.createFunction(
       },
     });
 
-    const result = await network.run(event.data.value);
+    const result = await network.run(event.data.value, {
+      state,
+    });
+
+    const fragmentTitleGenerator = createAgent<AgentState>({
+      name: "fragment-title-generator",
+      description: "A fragment title generator",
+      system: PROMPT.FRAGMENT_TITLE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
+    });
+
+    const responseGenerator = createAgent<AgentState>({
+      name: "response-generator",
+      description: "A response generator",
+      system: PROMPT.RESPONSE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
+    });
+
+    const { output: fragmentTitle } = await fragmentTitleGenerator.run(
+      result.state.data.summary,
+    );
+
+    const { output: response } = await responseGenerator.run(
+      result.state.data.summary,
+    );
+
+    const generateTitle = () => {
+      if (fragmentTitle[0]?.type !== "text") {
+        return "New Thread";
+      }
+      if (Array.isArray(fragmentTitle[0].content)) {
+        return fragmentTitle[0].content.map((c) => c).join("");
+      } else {
+        return fragmentTitle[0].content;
+      }
+    };
+
+    const generateResponse = () => {
+      if (response[0]?.type !== "text") {
+        return "Something went wrong. Please try again.";
+      }
+      if (Array.isArray(response[0].content)) {
+        return response[0].content.map((c) => c).join("");
+      } else {
+        return response[0].content;
+      }
+    };
 
     const isError =
       !result.state.data.summary ||
@@ -193,7 +285,7 @@ export const callAgent = inngest.createFunction(
       if (isError) {
         return await db.message.create({
           data: {
-            content: "Some thing went wrong. Please try again.",
+            content: generateResponse(),
             role: "ASSISTANT",
             type: "ERROR",
             threadId: event.data.threadId,
@@ -204,7 +296,7 @@ export const callAgent = inngest.createFunction(
 
       return await db.message.create({
         data: {
-          content: result.state.data.summary,
+          content: generateResponse(),
           threadId: event.data.threadId,
           role: "ASSISTANT",
           type: "RESULT",
@@ -213,7 +305,7 @@ export const callAgent = inngest.createFunction(
             create: {
               sandboxId,
               sandboxUrl,
-              title: "Fragment",
+              title: generateTitle(),
               files: result.state.data.files,
             },
           },
@@ -224,7 +316,7 @@ export const callAgent = inngest.createFunction(
     return {
       url: sandboxUrl,
       sandboxId,
-      title: "Fragment",
+      title: generateTitle(),
       files: result.state.data.files,
       summary: result.state.data.summary,
     };
