@@ -86,14 +86,12 @@ export const threadRouter = createTRPCRouter({
         },
       });
 
-      if (!user) {
-        // Create new user with initial credits
-        user = await db.user.create({
-          data: {
-            id: ctx.session?.userId,
-          },
-        });
-      }
+      // Create new user with initial credits if not found
+      user ??= await db.user.create({
+        data: {
+          id: ctx.session?.userId,
+        },
+      });
 
       // Check if user has credits
       if (user.credits <= 0) {

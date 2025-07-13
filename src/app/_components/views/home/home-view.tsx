@@ -30,7 +30,9 @@ export default function HomeView() {
 
   const { authenticated, login } = usePrivy();
 
-  const { data: user } = api.user.getUser.useQuery();
+  const { data: user } = api.user.getUser.useQuery(undefined, {
+    enabled: authenticated,
+  });
 
   const { mutateAsync: createThread, isPending: isCreatingThread } =
     api.thread.createThread.useMutation({
@@ -58,13 +60,13 @@ export default function HomeView() {
   };
 
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
-    if (!authenticated) {
+    if (authenticated) {
+      await createThread({
+        value: data.value,
+      });
+    } else {
       login();
-      return;
     }
-    await createThread({
-      value: data.value,
-    });
   };
 
   return (
