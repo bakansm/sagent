@@ -119,7 +119,7 @@ export default function HomeView() {
               <div className="flex items-end justify-between gap-x-2 pt-2">
                 <div className="flex items-center gap-x-2">
                   <span className="text-muted-foreground text-sm">
-                    Credits: {user?.credits ?? 0}
+                    Credits: {user?.credits ?? 0} / day
                   </span>
                 </div>
                 <Button

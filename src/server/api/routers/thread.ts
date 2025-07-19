@@ -2,6 +2,7 @@ import z from "zod";
 
 import { inngest } from "@/inngest/client";
 import { db } from "@/libs/db.lib";
+import { refreshDailyCredits } from "@/libs/server-utils.lib";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 
@@ -80,11 +81,8 @@ export const threadRouter = createTRPCRouter({
         });
       }
 
-      let user = await db.user.findUnique({
-        where: {
-          id: ctx.session?.userId,
-        },
-      });
+      // Refresh daily credits if needed
+      let user = await refreshDailyCredits(ctx.session?.userId);
 
       // Create new user with initial credits if not found
       user ??= await db.user.create({

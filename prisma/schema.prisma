@@ -21,6 +21,12 @@ enum MessageType {
     TEXT
 }
 
+enum PlanType {
+    FREE
+    PRO
+    PREMIUM
+}
+
 model Message {
     id        String   @id @default(uuid())
     content   String
@@ -67,7 +73,14 @@ model Thread {
 model User {
     id String @id @default(uuid())
 
-    credits Int @default(10)
+    // Subscription Plan
+    plan PlanType @default(FREE)
+    
+    // Credits Management
+    credits Int @default(5)
+    creditsUsedToday Int @default(0)
+    isSubscribed Boolean @default(false)
+    lastCreditRefresh DateTime @default(now())
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

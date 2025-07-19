@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/app/_components/ui/dropdown-menu";
 import { usePrivy } from "@privy-io/react-auth";
-import { CopyIcon, LogOutIcon, WalletIcon } from "lucide-react";
+import { CopyIcon, CreditCardIcon, LogOutIcon, WalletIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -43,21 +43,25 @@ export default function Navbar() {
                   toast.success("Address copied to clipboard");
                 }}
               >
-                <CopyIcon className="text-muted-foreground" />
-                <span className="text-muted-foreground hidden md:block">
-                  Copy Address
-                </span>
+                <CopyIcon />
+                Copy Address
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/billing">
+                  <CreditCardIcon />
+                  Billing
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={logout}>
                 <LogOutIcon className="text-red-500" />
-                <span className="hidden text-red-500 md:block">Disconnect</span>
+                Disconnect
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
           <Button onClick={login}>
             <WalletIcon />
-            <span className="hidden md:block">Connect Wallet</span>
+            Connect Wallet
           </Button>
         )}
       </div>

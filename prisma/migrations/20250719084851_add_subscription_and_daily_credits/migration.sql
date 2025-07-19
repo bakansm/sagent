@@ -1,0 +1,7 @@
+-- AlterEnum
+ALTER TYPE "MessageType" ADD VALUE 'TEXT';
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "isSubscribed" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "lastCreditRefresh" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ALTER COLUMN "credits" SET DEFAULT 5;
