@@ -1,8 +1,11 @@
+import { env } from "@/env";
 import { Sandbox } from "@e2b/code-interpreter";
 import type { AgentResult, TextMessage } from "@inngest/agent-kit";
 
 export async function getSandbox(sandboxId: string) {
-  const sandbox = await Sandbox.connect(sandboxId);
+  const sandbox = await Sandbox.connect(sandboxId, {
+    apiKey: env.E2B_API_KEY,
+  });
   return sandbox;
 }
 

@@ -23,7 +23,7 @@ export function CodeView({ code, language }: CodeViewProps) {
   }, [code, language]);
 
   return (
-    <pre className="p2 m-0 rounded-none border-none bg-transparent text-xs">
+    <pre className="p-2 m-0 rounded-none border-none bg-transparent text-xs">
       <code className={`language-${language}`}>{code}</code>
     </pre>
   );

@@ -63,10 +63,12 @@ export const messageRouter = createTRPCRouter({
         });
       } else {
         if (user.credits <= 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "User has no credits",
-          });
+          return {
+            success: false,
+            error:
+              "You don't have enough credits to send a message. Purchase more credits to continue.",
+            credits: user.credits,
+          };
         }
       }
 
@@ -92,6 +94,10 @@ export const messageRouter = createTRPCRouter({
         data: { value: message, threadId, userId: ctx.session?.userId },
       });
 
-      return newMessage;
+      return {
+        success: true,
+        message: newMessage,
+        credits: user.credits - 1,
+      };
     }),
 });

@@ -93,10 +93,12 @@ export const threadRouter = createTRPCRouter({
 
       // Check if user has credits
       if (user.credits <= 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "User has no credits",
-        });
+        return {
+          success: false,
+          error:
+            "You don't have enough credits to start a new conversation. Purchase more credits to continue.",
+          credits: user.credits,
+        };
       }
 
       const createdThread = await db.thread.create({
@@ -134,6 +136,10 @@ export const threadRouter = createTRPCRouter({
         },
       ]);
 
-      return createdThread;
+      return {
+        success: true,
+        thread: createdThread,
+        credits: user.credits - 1,
+      };
     }),
 });

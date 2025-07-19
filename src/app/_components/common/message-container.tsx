@@ -54,10 +54,29 @@ export default function MessageContainer({
   }, [messages]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-b from-gray-50/30 to-white/50 dark:from-gray-950/30 dark:to-gray-900/50">
       <ThreadHeader threadId={threadId} />
+
+      {/* Messages Area */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="pt-2 pr-1">
+        <div className="py-6">
+          {/* Welcome Message */}
+          {!messages?.length && (
+            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900">
+                <span className="text-2xl">🚀</span>
+              </div>
+              <h3 className="mb-2 text-xl font-semibold text-gray-900 dark:text-white">
+                Ready to build something amazing?
+              </h3>
+              <p className="text-muted-foreground max-w-md">
+                Start by describing what you&apos;d like to create. I&apos;ll help you
+                build it step by step.
+              </p>
+            </div>
+          )}
+
+          {/* Message List */}
           {messages?.map((message) => (
             <MessageCard
               key={message.id}
@@ -75,8 +94,12 @@ export default function MessageContainer({
           <div ref={bottomRef} />
         </div>
       </div>
-      <div className="relative p-3 pt-1">
-        <div className="from-background/70 pointer-events-none absolute -top-6 right-0 left-0 h-6 bg-gradient-to-b to-transparent" />
+
+      {/* Input Area */}
+      <div className="relative border-t border-white/20 bg-white/50 p-4 backdrop-blur-sm dark:border-gray-800/30 dark:bg-gray-900/50">
+        {/* Fade gradient */}
+        <div className="pointer-events-none absolute -top-8 right-0 left-0 h-8 bg-gradient-to-b from-transparent to-white/50 dark:to-gray-900/50" />
+
         <MessageForm threadId={threadId} />
       </div>
     </div>
