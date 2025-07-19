@@ -21,6 +21,7 @@ export const env = createEnv({
     GEMINI_API_KEY: z.string(),
     OPENAI_API_KEY: z.string(),
     PRIVY_APP_SECRET: z.string(),
+    ADMIN_PRIVATE_KEY: z.string(),
   },
 
   /**
@@ -39,14 +40,13 @@ export const env = createEnv({
    */
   runtimeEnv: {
     AUTH_SECRET: process.env.AUTH_SECRET,
-    // AUTH_DISCORD_ID: process.env.AUTH_DISCORD_ID,
-    // AUTH_DISCORD_SECRET: process.env.AUTH_DISCORD_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     E2B_API_KEY: process.env.E2B_API_KEY,
     NODE_ENV: process.env.NODE_ENV,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+    ADMIN_PRIVATE_KEY: process.env.ADMIN_PRIVATE_KEY,
     NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
     NEXT_PUBLIC_PRIVY_CLIENT_ID: process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID,
   },

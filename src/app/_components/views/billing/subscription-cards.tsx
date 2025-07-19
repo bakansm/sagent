@@ -20,10 +20,26 @@ export default function SubscriptionCards() {
   );
 
   const utils = api.useUtils();
-  const updatePlanMutation = api.user.updatePlan.useMutation({
+
+  // Subscription mutation with smart contract withdrawal
+  const subscribeMutation = api.user.subscribeToPlan.useMutation({
     onSuccess: async (data) => {
-      toast.success(`Successfully upgraded to ${data.plan} plan!`);
-      await utils.user.getBillingInfo.invalidate();
+      if (data.success) {
+        toast.success(data.message);
+        if (data.transactionHash) {
+          toast.info(
+            `Payment processed: ${data.transactionHash.slice(0, 10)}...`,
+          );
+        }
+        await utils.user.getBillingInfo.invalidate();
+      } else {
+        toast.error(data.error);
+
+        // If insufficient balance, suggest adding funds
+        if (data.error?.includes("Insufficient balance")) {
+          toast.info("Please add more funds to your account to subscribe.");
+        }
+      }
     },
     onError: (error) => {
       toast.error(`Subscription failed: ${error.message}`);
@@ -36,7 +52,30 @@ export default function SubscriptionCards() {
       return;
     }
 
-    updatePlanMutation.mutate({ plan });
+    if (!walletAddress) {
+      toast.error("Wallet not connected. Please connect your wallet first.");
+      return;
+    }
+
+    // Show confirmation for paid plans
+    if (plan !== PlanType.FREE) {
+      const planCosts = {
+        [PlanType.PRO]: "0.005 ETH",
+        [PlanType.PREMIUM]: "0.01 ETH",
+      };
+
+      const cost = planCosts[plan];
+      const confirmMessage = `Subscribe to ${plan} plan for ${cost}? This will automatically withdraw ${cost} from your deposited balance and give you 30 days of access.`;
+
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+    }
+
+    subscribeMutation.mutate({
+      plan,
+      walletAddress,
+    });
   };
 
   const isCurrentPlan = (plan: PlanType) => {
@@ -50,7 +89,25 @@ export default function SubscriptionCards() {
     if (isCurrentPlan(plan)) {
       return "Current Plan";
     }
+
+    if (subscribeMutation.isPending) {
+      return "Processing...";
+    }
+
     return `Subscribe to ${plan.charAt(0) + plan.slice(1).toLowerCase()}`;
+  };
+
+  const getButtonVariant = (plan: PlanType) => {
+    if (isCurrentPlan(plan)) {
+      return "outline" as const;
+    }
+    return undefined;
+  };
+
+  const formatExpirationDate = (date: Date | string | null) => {
+    if (!date) return null;
+    const expiration = new Date(date);
+    return expiration.toLocaleDateString();
   };
 
   return (
@@ -62,6 +119,12 @@ export default function SubscriptionCards() {
         <p className="text-muted-foreground mt-4 text-base sm:text-lg lg:text-xl">
           Select the subscription tier that fits your needs
         </p>
+        {billingInfo?.subscriptionExpiresAt && (
+          <p className="mt-2 text-sm text-orange-600 dark:text-orange-400">
+            Current subscription expires on{" "}
+            {formatExpirationDate(billingInfo.subscriptionExpiresAt)}
+          </p>
+        )}
       </div>
 
       <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
@@ -89,11 +152,19 @@ export default function SubscriptionCards() {
               <span className="text-lg text-green-500">✓</span>
               <span className="text-sm sm:text-base">Basic support</span>
             </div>
+            <div className="flex items-center gap-3">
+              <span className="text-lg text-gray-400">✓</span>
+              <span className="text-sm text-gray-500 sm:text-base">
+                No expiration
+              </span>
+            </div>
           </div>
           <Button
-            variant="outline"
+            variant={getButtonVariant(PlanType.FREE)}
             className="relative mt-8 w-full rounded-xl border-2 py-3 text-sm font-semibold transition-all duration-200 hover:scale-105 sm:text-base"
-            disabled={isCurrentPlan(PlanType.FREE)}
+            disabled={
+              isCurrentPlan(PlanType.FREE) || subscribeMutation.isPending
+            }
             onClick={() => handleSubscribe(PlanType.FREE)}
           >
             {getButtonText(PlanType.FREE)}
@@ -136,15 +207,14 @@ export default function SubscriptionCards() {
             </div>
           </div>
           <Button
+            variant={getButtonVariant(PlanType.PRO)}
             className="relative mt-8 w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-105 hover:from-blue-700 hover:to-purple-700 sm:text-base"
             disabled={
-              isCurrentPlan(PlanType.PRO) || updatePlanMutation.isPending
+              isCurrentPlan(PlanType.PRO) || subscribeMutation.isPending
             }
             onClick={() => handleSubscribe(PlanType.PRO)}
           >
-            {updatePlanMutation.isPending && !authenticated
-              ? "Connecting..."
-              : getButtonText(PlanType.PRO)}
+            {getButtonText(PlanType.PRO)}
           </Button>
         </div>
 
@@ -184,15 +254,14 @@ export default function SubscriptionCards() {
             </div>
           </div>
           <Button
+            variant={getButtonVariant(PlanType.PREMIUM)}
             className="relative mt-8 w-full rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-105 hover:from-purple-700 hover:to-pink-700 sm:text-base"
             disabled={
-              isCurrentPlan(PlanType.PREMIUM) || updatePlanMutation.isPending
+              isCurrentPlan(PlanType.PREMIUM) || subscribeMutation.isPending
             }
             onClick={() => handleSubscribe(PlanType.PREMIUM)}
           >
-            {updatePlanMutation.isPending && !authenticated
-              ? "Connecting..."
-              : getButtonText(PlanType.PREMIUM)}
+            {getButtonText(PlanType.PREMIUM)}
           </Button>
         </div>
       </div>

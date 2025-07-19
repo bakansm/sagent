@@ -75,6 +75,7 @@ model User {
 
     // Subscription Plan
     plan PlanType @default(FREE)
+    subscriptionExpiresAt DateTime? // When paid subscription expires
     
     // Credits Management
     credits Int @default(5)
