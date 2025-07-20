@@ -137,7 +137,7 @@ export default function HeroSection() {
               delay={200}
               as="span"
             >
-              {examples[currentExample] || ""}
+              {examples[currentExample] ?? ""}
             </TypingAnimation>{" "}
             <br className="sm:hidden" />
             in seconds with AI-powered development

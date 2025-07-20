@@ -138,7 +138,7 @@ export default function SubscriptionCards() {
     }
 
     if (isError && error) {
-      toast.error(`Transaction failed: ${error?.message || "Unknown error"}`);
+      toast.error("Transaction failed. Please try again.");
       setPendingPlan(null);
       processedTxRef.current = null;
     }
@@ -179,6 +179,7 @@ export default function SubscriptionCards() {
           toast.error(result.error);
         }
       } catch (error) {
+        console.log(error);
         toast.error("Failed to switch to free plan");
       }
       return;
@@ -280,9 +281,7 @@ export default function SubscriptionCards() {
       );
     } catch (error: unknown) {
       console.error("Subscription failed:", error);
-      toast.error(
-        `Transaction failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      toast.error("Transaction failed. Please try again.");
       setPendingPlan(null);
       processedTxRef.current = null;
     } finally {
