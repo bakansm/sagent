@@ -1,13 +1,12 @@
 import { SparklesIcon } from "lucide-react";
 import Image from "next/image";
-import BalanceSection from "./balance-section";
 import SubscriptionCards from "./subscription-cards";
+import SubscriptionStatusSection from "./subscription-status-section";
 
 export default function BillingView() {
   return (
     <div className="relative mx-auto flex w-full max-w-7xl flex-col overflow-hidden">
       <section className="relative space-y-8 px-4 py-[12vh] text-center sm:px-6 lg:px-8 2xl:py-32">
-        {/* Logo with glow effect */}
         <div className="flex justify-center">
           <div className="relative">
             <div className="absolute inset-0 h-16 w-16 animate-pulse rounded-full bg-green-500/20 blur-xl"></div>
@@ -33,7 +32,7 @@ export default function BillingView() {
         </div>
       </section>
 
-      <BalanceSection />
+      <SubscriptionStatusSection />
 
       <SubscriptionCards />
     </div>

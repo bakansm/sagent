@@ -1,7 +1,7 @@
 "use client";
 
-import { sagentChain } from "@/contract/chain";
-import { config } from "@/contract/wagmi";
+import { sagentChain } from "@/configs/chain";
+import { config } from "@/configs/wagmi";
 import { env } from "@/env";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -27,7 +27,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             },
             embeddedWallets: {
               ethereum: {
-                createOnLogin: "all-users",
+                createOnLogin: "users-without-wallets",
               },
             },
           }}

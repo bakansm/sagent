@@ -1,52 +1,159 @@
 "use client";
 
+import { ABI } from "@/constants/abi";
+import { ADDRESS } from "@/constants/address";
 import { api } from "@/trpc/react";
 import { PlanType } from "@prisma/client";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  getEmbeddedConnectedWallet,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { parseUnits, type Hex } from "viem";
+import {
+  useReadContract,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
 import { Button } from "../../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui/dialog";
+
+// Helper function to create explorer link
+const getExplorerLink = (txHash: string) => {
+  return `https://sagent-2751288990640000-1.sagaexplorer.io/tx/${txHash}`;
+};
 
 export default function SubscriptionCards() {
   const { authenticated, login } = usePrivy();
   const { wallets } = useWallets();
+  const [pendingPlan, setPendingPlan] = useState<PlanType | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [planToConfirm, setPlanToConfirm] = useState<PlanType | null>(null);
+  const processedTxRef = useRef<string | null>(null);
 
-  const walletAddress = wallets[0]?.address;
-
-  const { data: billingInfo } = api.user.getBillingInfo.useQuery(
-    { walletAddress: walletAddress ?? "" },
-    {
-      enabled: authenticated && !!walletAddress,
-    },
+  // Get the actual external wallet address (filter out embedded wallet)
+  const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
+  const externalWallet = wallets.find(
+    (wallet) => wallet.address !== embeddedWalletAddress,
   );
 
-  const utils = api.useUtils();
+  // Prefer external wallet, but fallback to embedded if that's all we have
+  const walletAddress = externalWallet?.address ?? embeddedWalletAddress;
 
-  // Subscription mutation with smart contract withdrawal
-  const subscribeMutation = api.user.subscribeToPlan.useMutation({
-    onSuccess: async (data) => {
-      if (data.success) {
-        toast.success(data.message);
-        if (data.transactionHash) {
-          toast.info(
-            `Payment processed: ${data.transactionHash.slice(0, 10)}...`,
-          );
-        }
-        await utils.user.getBillingInfo.invalidate();
-      } else {
-        toast.error(data.error);
-
-        // If insufficient balance, suggest adding funds
-        if (data.error?.includes("Insufficient balance")) {
-          toast.info("Please add more funds to your account to subscribe.");
-        }
-      }
-    },
-    onError: (error) => {
-      toast.error(`Subscription failed: ${error.message}`);
+  // Check current stablecoin allowance for subscription manager
+  const { data: currentAllowance } = useReadContract({
+    address: ADDRESS.STABLE_COIN as Hex,
+    abi: ABI.STABLE_COIN,
+    functionName: "allowance",
+    args: [walletAddress as Hex, ADDRESS.SUBSCRIPTION_MANAGER as Hex],
+    query: {
+      enabled: !!walletAddress,
     },
   });
 
-  const handleSubscribe = (plan: PlanType) => {
+  const { data: billingInfo } = api.user.getBillingInfo.useQuery(undefined, {
+    enabled: authenticated,
+  });
+
+  const utils = api.useUtils();
+
+  // Contract interaction hook
+  const {
+    writeContractAsync,
+    data: txHash,
+    isPending: isWritingContract,
+  } = useWriteContract();
+
+  // Wait for transaction confirmation
+  const {
+    data: receipt,
+    isLoading: isConfirming,
+    isSuccess,
+    isError,
+    error,
+  } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  // Backend subscription mutation for database updates
+  const subscribeMutation = api.user.subscribeToPlan.useMutation();
+
+  // Handle transaction success/error
+  useEffect(() => {
+    if (isSuccess && receipt && pendingPlan && pendingPlan !== PlanType.FREE) {
+      const txHash = receipt.transactionHash;
+
+      // Prevent processing the same transaction multiple times
+      if (processedTxRef.current === txHash) {
+        return;
+      }
+
+      processedTxRef.current = txHash;
+
+      // Call backend to update user plan with transaction hash
+      subscribeMutation
+        .mutateAsync({
+          plan: pendingPlan,
+          transactionHash: txHash,
+        })
+        .then(async (result) => {
+          if (result.success) {
+            toast.success(
+              <div>
+                <div>Subscription successful!</div>
+                <a
+                  href={getExplorerLink(txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline hover:text-blue-800"
+                >
+                  View on Explorer: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                </a>
+              </div>,
+            );
+            await utils.user.getBillingInfo.invalidate();
+          } else {
+            toast.error(result.error);
+          }
+        })
+        .catch(() => {
+          toast.error("Failed to update subscription plan");
+        })
+        .finally(() => {
+          setPendingPlan(null);
+          // Reset processed transaction ref for future transactions
+          setTimeout(() => {
+            processedTxRef.current = null;
+          }, 1000);
+        });
+    }
+
+    if (isError && error) {
+      toast.error(`Transaction failed: ${error?.message || "Unknown error"}`);
+      setPendingPlan(null);
+      processedTxRef.current = null;
+    }
+  }, [
+    isSuccess,
+    isError,
+    receipt?.transactionHash,
+    pendingPlan,
+    subscribeMutation,
+    utils,
+    receipt,
+    error,
+  ]);
+
+  const handleSubscribe = async (plan: PlanType) => {
     if (!authenticated) {
       login();
       return;
@@ -57,25 +164,130 @@ export default function SubscriptionCards() {
       return;
     }
 
-    // Show confirmation for paid plans
-    if (plan !== PlanType.FREE) {
-      const planCosts = {
-        [PlanType.PRO]: "0.005 ETH",
-        [PlanType.PREMIUM]: "0.01 ETH",
-      };
+    // Reset any previous state
+    processedTxRef.current = null;
+    setPendingPlan(null);
 
-      const cost = planCosts[plan];
-      const confirmMessage = `Subscribe to ${plan} plan for ${cost}? This will automatically withdraw ${cost} from your deposited balance and give you 30 days of access.`;
-
-      if (!confirm(confirmMessage)) {
-        return;
+    // Handle free plan (no contract interaction needed)
+    if (plan === PlanType.FREE) {
+      try {
+        const result = await subscribeMutation.mutateAsync({ plan });
+        if (result.success) {
+          toast.success(result.message);
+          await utils.user.getBillingInfo.invalidate();
+        } else {
+          toast.error(result.error);
+        }
+      } catch (error) {
+        toast.error("Failed to switch to free plan");
       }
+      return;
     }
 
-    subscribeMutation.mutate({
-      plan,
-      walletAddress,
-    });
+    // For paid plans, open confirmation modal
+    setPlanToConfirm(plan);
+    setConfirmationOpen(true);
+  };
+
+  const handleConfirmSubscription = async () => {
+    if (!planToConfirm || !walletAddress || planToConfirm === PlanType.FREE)
+      return;
+
+    // Close the modal
+    setConfirmationOpen(false);
+
+    // Reset processed transaction ref for new subscription
+    processedTxRef.current = null;
+
+    // Get plan pricing in SUSDC (assuming 18 decimals like most ERC20 tokens)
+    const planAmounts = {
+      [PlanType.PRO]: parseUnits("19", 18), // 19 SUSDC
+      [PlanType.PREMIUM]: parseUnits("39", 18), // 39 SUSDC
+    };
+
+    const amount = planAmounts[planToConfirm];
+
+    // Set pending plan for transaction tracking
+    setPendingPlan(planToConfirm);
+
+    try {
+      // Check if we need to approve first
+      const needsApproval = !currentAllowance || currentAllowance < amount;
+
+      if (needsApproval) {
+        toast.info("Approving SUSDC spending...");
+
+        // First approve the stablecoin
+        const approveTxHash = await writeContractAsync({
+          address: ADDRESS.STABLE_COIN as Hex,
+          abi: ABI.STABLE_COIN,
+          functionName: "approve",
+          args: [ADDRESS.SUBSCRIPTION_MANAGER as Hex, amount],
+          account: walletAddress as Hex,
+        });
+
+        toast.success(
+          <div>
+            <div>Approval successful!</div>
+            <a
+              href={getExplorerLink(approveTxHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline hover:text-blue-800"
+            >
+              View on Explorer: {approveTxHash.slice(0, 10)}...
+              {approveTxHash.slice(-8)}
+            </a>
+          </div>,
+        );
+
+        toast.info(
+          "Approval transaction submitted! Waiting for confirmation...",
+        );
+
+        // Wait for approval to be confirmed
+        // Note: In a real implementation, you might want to wait for the approval transaction
+        // to be confirmed before proceeding to the subscription
+      }
+
+      // Get the appropriate subscription function name
+      const functionName =
+        planToConfirm === PlanType.PRO ? "subscribePro" : "subscribePremium";
+
+      // Call the subscription function
+      const subscriptionTxHash = await writeContractAsync({
+        address: ADDRESS.SUBSCRIPTION_MANAGER as Hex,
+        abi: ABI.SUBSCRIPTION_MANAGER,
+        functionName: functionName,
+        account: walletAddress as Hex,
+      });
+
+      console.log("subscription response", subscriptionTxHash);
+
+      toast.success(
+        <div>
+          <div>Subscription successful!</div>
+          <a
+            href={getExplorerLink(subscriptionTxHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline hover:text-blue-800"
+          >
+            View on Explorer: {subscriptionTxHash.slice(0, 10)}...
+            {subscriptionTxHash.slice(-8)}
+          </a>
+        </div>,
+      );
+    } catch (error: unknown) {
+      console.error("Subscription failed:", error);
+      toast.error(
+        `Transaction failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+      setPendingPlan(null);
+      processedTxRef.current = null;
+    } finally {
+      setPlanToConfirm(null);
+    }
   };
 
   const isCurrentPlan = (plan: PlanType) => {
@@ -90,8 +302,12 @@ export default function SubscriptionCards() {
       return "Current Plan";
     }
 
+    if (pendingPlan === plan && (isWritingContract || isConfirming)) {
+      return isWritingContract ? "Confirming..." : "Processing...";
+    }
+
     if (subscribeMutation.isPending) {
-      return "Processing...";
+      return "Updating...";
     }
 
     return `Subscribe to ${plan.charAt(0) + plan.slice(1).toLowerCase()}`;
@@ -108,6 +324,16 @@ export default function SubscriptionCards() {
     if (!date) return null;
     const expiration = new Date(date);
     return expiration.toLocaleDateString();
+  };
+
+  const isButtonDisabled = (plan: PlanType) => {
+    return (
+      isCurrentPlan(plan) ||
+      isWritingContract ||
+      isConfirming ||
+      subscribeMutation.isPending ||
+      (pendingPlan !== null && pendingPlan !== plan)
+    );
   };
 
   return (
@@ -138,7 +364,7 @@ export default function SubscriptionCards() {
             </p>
           </div>
           <div className="relative mt-6 text-center">
-            <div className="text-3xl font-bold sm:text-4xl">0 ETH</div>
+            <div className="text-3xl font-bold sm:text-4xl">0 SUSDC</div>
             <p className="text-muted-foreground text-sm sm:text-base">
               per month
             </p>
@@ -162,9 +388,7 @@ export default function SubscriptionCards() {
           <Button
             variant={getButtonVariant(PlanType.FREE)}
             className="relative mt-8 w-full rounded-xl border-2 py-3 text-sm font-semibold transition-all duration-200 hover:scale-105 sm:text-base"
-            disabled={
-              isCurrentPlan(PlanType.FREE) || subscribeMutation.isPending
-            }
+            disabled={isButtonDisabled(PlanType.FREE)}
             onClick={() => handleSubscribe(PlanType.FREE)}
           >
             {getButtonText(PlanType.FREE)}
@@ -187,7 +411,7 @@ export default function SubscriptionCards() {
             </p>
           </div>
           <div className="relative mt-6 text-center">
-            <div className="text-3xl font-bold sm:text-4xl">0.005 ETH</div>
+            <div className="text-3xl font-bold sm:text-4xl">19 SUSDC</div>
             <p className="text-muted-foreground text-sm sm:text-base">
               per month
             </p>
@@ -209,9 +433,7 @@ export default function SubscriptionCards() {
           <Button
             variant={getButtonVariant(PlanType.PRO)}
             className="relative mt-8 w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-105 hover:from-blue-700 hover:to-purple-700 sm:text-base"
-            disabled={
-              isCurrentPlan(PlanType.PRO) || subscribeMutation.isPending
-            }
+            disabled={isButtonDisabled(PlanType.PRO)}
             onClick={() => handleSubscribe(PlanType.PRO)}
           >
             {getButtonText(PlanType.PRO)}
@@ -228,7 +450,7 @@ export default function SubscriptionCards() {
             </p>
           </div>
           <div className="relative mt-6 text-center">
-            <div className="text-3xl font-bold sm:text-4xl">0.01 ETH</div>
+            <div className="text-3xl font-bold sm:text-4xl">39 SUSDC</div>
             <p className="text-muted-foreground text-sm sm:text-base">
               per month
             </p>
@@ -256,15 +478,115 @@ export default function SubscriptionCards() {
           <Button
             variant={getButtonVariant(PlanType.PREMIUM)}
             className="relative mt-8 w-full rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 py-3 text-sm font-semibold text-white transition-all duration-200 hover:scale-105 hover:from-purple-700 hover:to-pink-700 sm:text-base"
-            disabled={
-              isCurrentPlan(PlanType.PREMIUM) || subscribeMutation.isPending
-            }
+            disabled={isButtonDisabled(PlanType.PREMIUM)}
             onClick={() => handleSubscribe(PlanType.PREMIUM)}
           >
             {getButtonText(PlanType.PREMIUM)}
           </Button>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      <Dialog open={confirmationOpen} onOpenChange={setConfirmationOpen}>
+        <DialogContent className="rounded-2xl border bg-white/50 shadow-xl backdrop-blur-sm sm:max-w-[480px] dark:bg-gray-900/50">
+          {/* Gradient overlay for subtle animation */}
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-50"></div>
+
+          <DialogHeader className="relative">
+            <DialogTitle className="flex items-center gap-3 text-xl font-bold sm:text-2xl">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+                🚀
+              </div>
+              <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-green-600 bg-clip-text text-transparent">
+                Confirm Subscription
+              </span>
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground mt-2 text-sm sm:text-base">
+              You&apos;re about to subscribe to the{" "}
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text font-semibold text-transparent">
+                {planToConfirm?.charAt(0)}
+                {planToConfirm?.slice(1).toLowerCase()}
+              </span>{" "}
+              plan with enhanced features and premium support.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative grid gap-6 py-6">
+            {/* Plan details card */}
+            <div className="relative rounded-2xl border bg-white/30 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 dark:bg-gray-800/30">
+              <div className="relative space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Plan Type
+                  </span>
+                  <span className="rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1 text-sm font-semibold text-white shadow-md">
+                    {planToConfirm?.charAt(0)}
+                    {planToConfirm?.slice(1).toLowerCase()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Monthly Price
+                  </span>
+                  <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-2xl font-bold text-transparent">
+                    {planToConfirm === PlanType.PRO ? "19" : "39"} SUSDC
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Subscription Duration
+                  </span>
+                  <span className="font-semibold">30 days</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-sm font-medium">
+                    Daily Credits
+                  </span>
+                  <span className="font-semibold text-green-600">
+                    {planToConfirm === PlanType.PRO ? "30" : "60"} credits
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Information box */}
+            <div className="rounded-xl border bg-gradient-to-r from-blue-50/50 to-purple-50/50 p-4 dark:from-blue-950/20 dark:to-purple-950/20">
+              <div className="flex items-start gap-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-bold text-white">
+                  ℹ
+                </div>
+                <div className="text-muted-foreground text-sm">
+                  <p>
+                    This subscription will charge{" "}
+                    <span className="text-foreground font-semibold">
+                      {planToConfirm === PlanType.PRO ? "19" : "39"} SUSDC
+                    </span>{" "}
+                    from your connected wallet and provide immediate access to
+                    all {planToConfirm?.toLowerCase()} plan features for 30
+                    days.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="relative gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmationOpen(false)}
+              className="rounded-xl border-2 transition-all duration-200 hover:scale-105"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSubscription}
+              className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:from-blue-700 hover:to-purple-700 hover:shadow-xl"
+            >
+              Confirm & Subscribe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

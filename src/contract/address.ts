@@ -1,4 +1,0 @@
-export const address = {
-  megaethTestnet: "0x0000000000000000000000000000000000000000",
-  sagent: "0xb12869faac5941D7d234523737289b363323B3f9",
-};
