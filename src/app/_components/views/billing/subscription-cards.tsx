@@ -38,6 +38,7 @@ export default function SubscriptionCards() {
   const [pendingPlan, setPendingPlan] = useState<PlanType | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [planToConfirm, setPlanToConfirm] = useState<PlanType | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const processedTxRef = useRef<string | null>(null);
 
   // Get the actual external wallet address (filter out embedded wallet)
@@ -60,11 +61,16 @@ export default function SubscriptionCards() {
     },
   });
 
-  const { data: billingInfo } = api.user.getBillingInfo.useQuery(undefined, {
-    enabled: authenticated,
-  });
+  // Get billing info from database (not contract directly)
+  const { data: billingInfo, refetch: refetchBillingInfo } =
+    api.user.getBillingInfo.useQuery(undefined, {
+      enabled: authenticated,
+    });
 
   const utils = api.useUtils();
+
+  // Contract sync mutation
+  const syncContractMutation = api.user.syncContractStatus.useMutation();
 
   // Contract interaction hook
   const {
@@ -87,6 +93,31 @@ export default function SubscriptionCards() {
   // Backend subscription mutation for database updates
   const subscribeMutation = api.user.subscribeToPlan.useMutation();
 
+  // Sync contract status on first load
+  useEffect(() => {
+    if (authenticated && walletAddress && !isSyncing) {
+      setIsSyncing(true);
+      void syncContractMutation
+        .mutateAsync({ walletAddress })
+        .then(() => {
+          // Refresh billing info after sync
+          void refetchBillingInfo();
+        })
+        .catch((error) => {
+          console.error("Failed to sync contract status on load:", error);
+        })
+        .finally(() => {
+          setIsSyncing(false);
+        });
+    }
+  }, [
+    authenticated,
+    walletAddress,
+    syncContractMutation,
+    refetchBillingInfo,
+    isSyncing,
+  ]);
+
   // Handle transaction success/error
   useEffect(() => {
     if (isSuccess && receipt && pendingPlan && pendingPlan !== PlanType.FREE) {
@@ -99,11 +130,12 @@ export default function SubscriptionCards() {
 
       processedTxRef.current = txHash;
 
-      // Call backend to update user plan with transaction hash
+      // Call backend to verify transaction and sync contract status
       subscribeMutation
         .mutateAsync({
           plan: pendingPlan,
           transactionHash: txHash,
+          walletAddress: walletAddress!,
         })
         .then(async (result) => {
           if (result.success) {
@@ -120,6 +152,8 @@ export default function SubscriptionCards() {
                 </a>
               </div>,
             );
+
+            // Refresh billing info to show updated data
             await utils.user.getBillingInfo.invalidate();
           } else {
             toast.error(result.error);
@@ -151,7 +185,17 @@ export default function SubscriptionCards() {
     utils,
     receipt,
     error,
+    walletAddress,
   ]);
+
+  useEffect(() => {
+    if (isSyncing) {
+      const timer = setTimeout(() => {
+        void refetchBillingInfo();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isSyncing, refetchBillingInfo]);
 
   const handleSubscribe = async (plan: PlanType) => {
     if (!authenticated) {
@@ -171,7 +215,10 @@ export default function SubscriptionCards() {
     // Handle free plan (no contract interaction needed)
     if (plan === PlanType.FREE) {
       try {
-        const result = await subscribeMutation.mutateAsync({ plan });
+        const result = await subscribeMutation.mutateAsync({
+          plan,
+          walletAddress,
+        });
         if (result.success) {
           toast.success(result.message);
           await utils.user.getBillingInfo.invalidate();
@@ -267,7 +314,7 @@ export default function SubscriptionCards() {
 
       toast.success(
         <div>
-          <div>Subscription successful!</div>
+          <div>Subscription transaction submitted!</div>
           <a
             href={getExplorerLink(subscriptionTxHash)}
             target="_blank"
@@ -331,7 +378,9 @@ export default function SubscriptionCards() {
       isWritingContract ||
       isConfirming ||
       subscribeMutation.isPending ||
-      (pendingPlan !== null && pendingPlan !== plan)
+      syncContractMutation.isPending ||
+      (pendingPlan !== null && pendingPlan !== plan) ||
+      isSyncing
     );
   };
 
@@ -344,6 +393,11 @@ export default function SubscriptionCards() {
         <p className="text-muted-foreground mt-4 text-base sm:text-lg lg:text-xl">
           Select the subscription tier that fits your needs
         </p>
+        {isSyncing && (
+          <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+            🔄 Syncing subscription status from contract...
+          </p>
+        )}
         {billingInfo?.subscriptionExpiresAt && (
           <p className="mt-2 text-sm text-orange-600 dark:text-orange-400">
             Current subscription expires on{" "}

@@ -54,14 +54,16 @@ export default function Navbar() {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-56 rounded-xl border bg-white/80 backdrop-blur-md dark:bg-gray-900/80"
+              className="w-56 rounded-xl border bg-white/80 shadow-lg backdrop-blur-md dark:bg-gray-900/80"
             >
               <DropdownMenuItem
                 onClick={() => {
-                  void navigator.clipboard.writeText(user?.wallet?.address ?? "");
+                  void navigator.clipboard.writeText(
+                    user?.wallet?.address ?? "",
+                  );
                   toast.success("Address copied!");
                 }}
-                className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-blue-50 dark:hover:bg-blue-950"
+                className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-blue-500 dark:hover:bg-blue-900"
               >
                 <CopyIcon className="mr-2 h-4 w-4" />
                 Copy Address
@@ -69,7 +71,7 @@ export default function Navbar() {
               <DropdownMenuItem asChild>
                 <Link
                   href="/billing"
-                  className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-green-50 dark:hover:bg-green-950"
+                  className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-green-500 dark:hover:bg-green-900"
                 >
                   <CreditCardIcon className="mr-2 h-4 w-4" />
                   Billing
@@ -77,7 +79,7 @@ export default function Navbar() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={logout}
-                className="cursor-pointer rounded-lg text-red-600 transition-all duration-200 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                className="cursor-pointer rounded-lg text-red-600 transition-all duration-200 hover:bg-red-500 dark:text-red-400 dark:hover:bg-red-900"
               >
                 <LogOutIcon className="mr-2 h-4 w-4" />
                 Logout

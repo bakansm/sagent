@@ -1,8 +1,7 @@
 "use client";
 
-import { ABI } from "@/constants/abi";
-import { ADDRESS } from "@/constants/address";
 import { api } from "@/trpc/react";
+import { PlanType } from "@prisma/client";
 import {
   getEmbeddedConnectedWallet,
   usePrivy,
@@ -12,15 +11,16 @@ import {
   CalendarIcon,
   ClockIcon,
   CreditCardIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
   TrendingUpIcon,
 } from "lucide-react";
-import type { Hex } from "viem";
-import { useReadContract } from "wagmi";
+import { useState } from "react";
 
 export default function SubscriptionStatusSection() {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Get the actual external wallet address (filter out embedded wallet)
   const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
@@ -36,17 +36,56 @@ export default function SubscriptionStatusSection() {
     enabled: authenticated,
   });
 
-  // Read subscription status from contract
-  const { data: subscriptionStatus, isLoading: isLoadingContract } =
-    useReadContract({
-      address: ADDRESS.SUBSCRIPTION_MANAGER as Hex,
-      abi: ABI.SUBSCRIPTION_MANAGER,
-      functionName: "getMySubscriptionStatus",
-      account: walletAddress as Hex,
-      query: {
-        enabled: authenticated && !!walletAddress,
-      },
+  // Get billing info from database
+  const { data: billingInfo, refetch: refetchBillingInfo } =
+    api.user.getBillingInfo.useQuery(undefined, {
+      enabled: authenticated,
     });
+
+  // Contract sync mutation
+  const syncContractMutation = api.user.syncContractStatus.useMutation();
+
+  const handleSyncContract = async () => {
+    if (!walletAddress || isSyncing) return;
+
+    setIsSyncing(true);
+    try {
+      await syncContractMutation.mutateAsync({ walletAddress });
+      await refetchBillingInfo();
+    } catch (error) {
+      console.error("Failed to sync contract status:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const formatTimestamp = (date: Date | string | null) => {
+    if (!date) return null;
+    const expiration = new Date(date);
+    return expiration.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const isExpired = billingInfo?.subscriptionExpiresAt
+    ? new Date(billingInfo.subscriptionExpiresAt) <= new Date()
+    : false;
+
+  const daysRemaining =
+    billingInfo?.subscriptionExpiresAt && !isExpired
+      ? Math.max(
+          0,
+          Math.ceil(
+            (new Date(billingInfo.subscriptionExpiresAt).getTime() -
+              Date.now()) /
+              (1000 * 60 * 60 * 24),
+          ),
+        )
+      : 0;
 
   if (!authenticated || !user) {
     return (
@@ -60,59 +99,33 @@ export default function SubscriptionStatusSection() {
     );
   }
 
-  // Parse contract data
-  const contractTier = subscriptionStatus?.[0];
-  const contractEndTime = subscriptionStatus?.[1];
-  const contractDailyCredits = subscriptionStatus?.[2];
-
-  // Map contract tier to plan type
-  const getTierName = (tier: number) => {
-    switch (tier) {
-      case 0:
-        return "FREE";
-      case 1:
-        return "PRO";
-      case 2:
-        return "PREMIUM";
-      default:
-        return "UNKNOWN";
-    }
-  };
-
-  const formatTimestamp = (timestamp: bigint) => {
-    const date = new Date(Number(timestamp) * 1000);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const isExpired = contractEndTime
-    ? Number(contractEndTime) * 1000 < Date.now()
-    : false;
-  const daysRemaining = contractEndTime
-    ? Math.max(
-        0,
-        Math.ceil(
-          (Number(contractEndTime) * 1000 - Date.now()) / (1000 * 60 * 60 * 24),
-        ),
-      )
-    : 0;
-
   return (
     <section className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h2 className="bg-gradient-to-r from-green-600 via-blue-600 to-purple-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">
-            Subscription Status
-          </h2>
-          <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-            Current subscription details from smart contract
-          </p>
+          <div className="flex items-center justify-center gap-4">
+            <div>
+              <h2 className="bg-gradient-to-r from-green-600 via-blue-600 to-purple-600 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">
+                Subscription Status
+              </h2>
+              <p className="text-muted-foreground mt-2 text-sm sm:text-base">
+                Current subscription details synced from smart contract
+              </p>
+            </div>
+            <button
+              onClick={handleSyncContract}
+              disabled={isSyncing || !walletAddress}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/50 p-2 shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-900/50 dark:hover:bg-gray-900/70"
+              title="Sync with contract"
+            >
+              <RefreshCwIcon
+                className={`h-5 w-5 text-gray-600 dark:text-gray-400 ${
+                  isSyncing ? "animate-spin" : ""
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Status Cards Grid */}
@@ -130,24 +143,13 @@ export default function SubscriptionStatusSection() {
                     Current Plan
                   </p>
                   <p className="text-lg font-bold">
-                    {isLoadingContract
-                      ? "Loading..."
-                      : contractTier !== undefined &&
-                          contractEndTime !== undefined
-                        ? contractTier === 0 || contractEndTime === 0n
-                          ? "Unlimited"
-                          : isExpired
-                            ? "Expired"
-                            : `${daysRemaining} days`
-                        : "Contract Unavailable"}
+                    {billingInfo?.plan ?? "Loading..."}
                   </p>
-                  {!isLoadingContract &&
-                    (contractTier === undefined ||
-                      contractEndTime === undefined) && (
-                      <p className="text-xs text-orange-600 dark:text-orange-400">
-                        Cannot read from contract
-                      </p>
-                    )}
+                  {isExpired && billingInfo?.plan !== PlanType.FREE && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      Expired
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -166,17 +168,8 @@ export default function SubscriptionStatusSection() {
                     Daily Credits
                   </p>
                   <p className="text-lg font-bold">
-                    {isLoadingContract
-                      ? "Loading..."
-                      : contractDailyCredits !== undefined
-                        ? String(contractDailyCredits)
-                        : "Contract Unavailable"}
+                    {billingInfo?.dailyLimit ?? "Loading..."}
                   </p>
-                  {!isLoadingContract && contractDailyCredits === undefined && (
-                    <p className="text-xs text-orange-600 dark:text-orange-400">
-                      Cannot read from contract
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
@@ -213,12 +206,17 @@ export default function SubscriptionStatusSection() {
                     Status
                   </p>
                   <p className="text-lg font-bold">
-                    {contractTier === 0 || !contractEndTime
+                    {billingInfo?.plan === PlanType.FREE
                       ? "Unlimited"
                       : isExpired
                         ? "Expired"
                         : `${daysRemaining} days`}
                   </p>
+                  {billingInfo?.plan !== PlanType.FREE && isExpired && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      Renew required
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -229,91 +227,91 @@ export default function SubscriptionStatusSection() {
         <div className="rounded-2xl border bg-white/50 p-6 backdrop-blur-sm dark:bg-gray-900/50">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">
             <CalendarIcon className="h-5 w-5" />
-            Contract & Database Details
+            Subscription Details
           </h3>
+
+          {/* Warning for expired subscriptions */}
+          {isExpired && billingInfo?.plan !== PlanType.FREE && (
+            <div className="mb-4 rounded-lg bg-red-50/50 p-3 dark:bg-red-950/20">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-5 text-red-600 dark:text-red-400">⚠️</div>
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  <span className="font-semibold">Subscription Expired:</span>{" "}
+                  Your {billingInfo?.plan?.toLowerCase()} subscription has
+                  expired. Please renew to continue using premium features.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="mb-4 rounded-lg bg-blue-50/50 p-3 dark:bg-blue-950/20">
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              <span className="font-semibold">ℹ️ Data Priority:</span> Contract
-              data is the source of truth. Database values are shown for
-              comparison.
+              <span className="font-semibold">ℹ️ Data Source:</span>{" "}
+              Subscription status is synced from the smart contract and stored
+              in our database for fast access.
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                Contract Plan
+                Current Plan
               </p>
               <p className="text-base font-semibold">
-                {isLoadingContract
-                  ? "Loading..."
-                  : contractTier !== undefined
-                    ? `${getTierName(contractTier)}`
-                    : "Not available"}
+                {billingInfo?.plan ?? "Loading..."}
               </p>
             </div>
 
             <div>
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                Database Plan
+                Daily Credits
               </p>
-              <p className="text-base font-semibold">{user.plan}</p>
+              <p className="text-base font-semibold">
+                {billingInfo?.dailyLimit ?? "Loading..."}
+              </p>
             </div>
 
-            {contractEndTime && contractTier !== 0 && (
-              <div className="sm:col-span-2">
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                  Subscription Expires
-                </p>
-                <p className="text-base font-semibold">
-                  {formatTimestamp(contractEndTime)}
-                  {isExpired && (
-                    <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                      Expired
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
+            {billingInfo?.subscriptionExpiresAt &&
+              billingInfo.plan !== PlanType.FREE && (
+                <div className="sm:col-span-2">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Subscription Expires
+                  </p>
+                  <p className="text-base font-semibold">
+                    {formatTimestamp(billingInfo.subscriptionExpiresAt)}
+                    {isExpired && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                        Expired
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
           </div>
 
-          {/* Contract Status */}
+          {/* Sync Status */}
           <div className="mt-4 border-t pt-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                Contract connection:
+                Contract sync:
               </span>
               <span
                 className={`text-sm font-medium ${
-                  !isLoadingContract && contractTier !== undefined
+                  !isSyncing
                     ? "text-green-600 dark:text-green-400"
-                    : isLoadingContract
-                      ? "text-blue-600 dark:text-blue-400"
-                      : "text-red-600 dark:text-red-400"
+                    : "text-blue-600 dark:text-blue-400"
                 }`}
               >
-                {isLoadingContract
-                  ? "🔄 Loading..."
-                  : contractTier !== undefined
-                    ? "✓ Connected"
-                    : "❌ Disconnected"}
+                {isSyncing ? "🔄 Syncing..." : "✓ Synced"}
               </span>
             </div>
-            {contractTier !== undefined && (
+            {walletAddress && (
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Database sync:
+                  Wallet connected:
                 </span>
-                <span
-                  className={`text-sm font-medium ${
-                    getTierName(contractTier) === user.plan
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-orange-600 dark:text-orange-400"
-                  }`}
-                >
-                  {getTierName(contractTier) === user.plan
-                    ? "✓ In Sync"
-                    : "⚠ Out of Sync"}
+                <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                  ✓ {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
                 </span>
               </div>
             )}

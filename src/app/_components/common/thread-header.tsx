@@ -54,11 +54,11 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="w-56 rounded-xl border bg-white/80 shadow-lg backdrop-blur-md dark:bg-gray-900/80"
+          className="w-56 rounded-xl border bg-white/80 backdrop-blur-md dark:bg-gray-900/80"
         >
           <DropdownMenuItem
             asChild
-            className="rounded-lg transition-all duration-200 hover:bg-blue-50 dark:hover:bg-blue-950"
+            className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-blue-50 dark:hover:bg-blue-950"
           >
             <Link href="/" className="flex items-center gap-3 p-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/50">
@@ -76,7 +76,7 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
           </DropdownMenuItem>
 
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="flex cursor-pointer items-center gap-3 rounded-lg transition-all duration-200 hover:bg-purple-50 dark:hover:bg-purple-950">
+            <DropdownMenuSubTrigger className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-purple-50 dark:hover:bg-purple-950">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/50">
                 <SunMoonIcon className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               </div>
@@ -85,17 +85,17 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
-              <DropdownMenuSubContent className="w-48 rounded-xl border bg-white/90 shadow-xl backdrop-blur-md dark:bg-gray-900/90">
+              <DropdownMenuSubContent className="w-48 rounded-xl border bg-white/80 backdrop-blur-md dark:bg-gray-900/80">
                 <DropdownMenuRadioGroup
                   value={theme}
                   onValueChange={(value) => setTheme(value)}
                 >
                   <DropdownMenuRadioItem
                     value="light"
-                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-yellow-500 dark:hover:bg-yellow-900"
+                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-yellow-50 dark:hover:bg-yellow-950"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-yellow-300 dark:bg-yellow-700">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-yellow-100 dark:bg-yellow-900/50">
                         🌞
                       </div>
                       <span className="font-medium">Light</span>
@@ -103,10 +103,10 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem
                     value="dark"
-                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-gray-500 dark:hover:bg-gray-900"
+                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-950"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-300 dark:bg-gray-700">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-900/50">
                         🌙
                       </div>
                       <span className="font-medium">Dark</span>
@@ -114,10 +114,10 @@ export default function ThreadHeader({ threadId }: ThreadHeaderProps) {
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem
                     value="system"
-                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-blue-500 dark:hover:bg-blue-900"
+                    className="cursor-pointer rounded-lg transition-all duration-200 hover:bg-blue-50 dark:hover:bg-blue-950"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-300 dark:bg-blue-700">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/50">
                         ⚙️
                       </div>
                       <span className="font-medium">System</span>
