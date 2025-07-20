@@ -5,8 +5,8 @@ import SubscriptionStatusSection from "./subscription-status-section";
 
 export default function BillingView() {
   return (
-    <div className="relative mx-auto flex w-full max-w-7xl flex-col overflow-hidden">
-      <section className="relative space-y-8 px-4 py-[12vh] text-center sm:px-6 lg:px-8 2xl:py-32">
+    <div className="relative mx-auto flex w-full max-w-7xl flex-col space-y-20 overflow-hidden">
+      <section className="relative mt-40 space-y-8 px-4 text-center sm:px-6">
         <div className="flex justify-center">
           <div className="relative">
             <div className="absolute inset-0 h-16 w-16 animate-pulse rounded-full bg-green-500/20 blur-xl"></div>
