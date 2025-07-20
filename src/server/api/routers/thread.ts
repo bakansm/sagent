@@ -110,18 +110,11 @@ export const threadRouter = createTRPCRouter({
               content: value,
               role: "USER",
               type: "RESULT",
+              status: "PROCESSING",
               userId: ctx.session?.userId,
             },
           },
         },
-      });
-
-      // Update user credits minus 1
-      await db.user.update({
-        where: {
-          id: ctx.session?.userId,
-        },
-        data: { credits: user.credits - 1 },
       });
 
       await inngest.send([
@@ -139,7 +132,6 @@ export const threadRouter = createTRPCRouter({
       return {
         success: true,
         thread: createdThread,
-        credits: user.credits - 1,
       };
     }),
 });

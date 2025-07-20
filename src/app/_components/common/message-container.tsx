@@ -4,8 +4,8 @@ import MessageCard from "@/app/_components/common/message-card";
 import { api } from "@/trpc/react";
 import type { Fragment } from "@prisma/client";
 import { useEffect, useMemo, useRef } from "react";
+import { ScrollArea } from "../ui/scroll-area";
 import MessageForm from "./message-form";
-import MessageLoading from "./message-loading";
 import ThreadHeader from "./thread-header";
 
 interface MessageContainerProps {
@@ -26,7 +26,19 @@ export default function MessageContainer({
       threadId,
     },
     {
-      refetchInterval: 5000,
+      refetchInterval: (query) => {
+        const messages = query.state.data;
+        const hasProcessingAssistantMessage = messages?.some(
+          (message) =>
+            message.role === "ASSISTANT" && message.status === "PROCESSING",
+        );
+        const isLastMessageUser =
+          messages?.[messages.length - 1]?.role === "USER";
+
+        return hasProcessingAssistantMessage || isLastMessageUser
+          ? 5000
+          : false;
+      },
     },
   );
 
@@ -49,8 +61,11 @@ export default function MessageContainer({
     }
   }, [messages, bottomRef]);
 
-  const isLastUserMessage = useMemo(() => {
-    return messages?.[messages?.length - 1]?.role === "USER";
+  const isLastMessageProcessing = useMemo(() => {
+    const lastMessage = messages?.[messages.length - 1];
+    return (
+      lastMessage?.role === "ASSISTANT" && lastMessage.status === "PROCESSING"
+    );
   }, [messages]);
 
   return (
@@ -58,7 +73,7 @@ export default function MessageContainer({
       <ThreadHeader threadId={threadId} />
 
       {/* Messages Area */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="py-6">
           {/* Welcome Message */}
           {!messages?.length && (
@@ -70,8 +85,8 @@ export default function MessageContainer({
                 Ready to build something amazing?
               </h3>
               <p className="text-muted-foreground max-w-md">
-                Start by describing what you&apos;d like to create. I&apos;ll help you
-                build it step by step.
+                Start by describing what you&apos;d like to create. I&apos;ll
+                help you build it step by step.
               </p>
             </div>
           )}
@@ -87,13 +102,13 @@ export default function MessageContainer({
               onFragmentClick={() => setActiveFragment(message.fragments)}
               type={message.type}
               createdAt={message.createdAt}
+              status={message.status} // Pass status to MessageCard
             />
           ))}
 
-          {isLastUserMessage && <MessageLoading />}
           <div ref={bottomRef} />
         </div>
-      </div>
+      </ScrollArea>
 
       {/* Input Area */}
       <div className="relative border-t border-white/20 bg-white/50 p-4 backdrop-blur-sm dark:border-gray-800/30 dark:bg-gray-900/50">

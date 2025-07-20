@@ -20,14 +20,10 @@ export default function AuthHandler() {
     if (authenticated && user?.id && !hasProcessedAuth.current) {
       hasProcessedAuth.current = true;
 
-      console.log("Wallet connected, processing user authentication...");
-
       // Trigger the user creation/fetch
       refetchUser()
         .then((result) => {
           if (result.data) {
-            console.log("User synchronized successfully:", result.data);
-
             // Only show success toast for new users
             if (result.data.isNewUser) {
               toast.success(

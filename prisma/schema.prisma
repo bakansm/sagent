@@ -21,6 +21,12 @@ enum MessageType {
     TEXT
 }
 
+enum MessageStatus {
+    PROCESSING
+    COMPLETED
+    FAILED
+}
+
 enum PlanType {
     FREE
     PRO
@@ -32,6 +38,7 @@ model Message {
     content   String
     role      MessageRole   
     type      MessageType
+    status    MessageStatus @default(PROCESSING)
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 

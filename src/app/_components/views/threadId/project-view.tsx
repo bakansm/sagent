@@ -67,14 +67,14 @@ export default function ProjectView({ threadId }: ProjectViewProps) {
               <TabsList className="border border-white/20 bg-white/80 backdrop-blur-sm dark:border-gray-800/30 dark:bg-gray-900/80">
                 <TabsTrigger
                   value="preview"
-                  className="rounded-lg transition-all duration-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white"
+                  className="rounded-lg border-0 transition-all duration-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white"
                 >
                   <EyeIcon className="mr-2 h-4 w-4" />
                   <span>Preview</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="code"
-                  className="rounded-lg transition-all duration-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-blue-500 data-[state=active]:text-white"
+                  className="rounded-lg border-0 transition-all duration-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-blue-500 data-[state=active]:text-white"
                 >
                   <CodeIcon className="mr-2 h-4 w-4" />
                   <span>Code</span>

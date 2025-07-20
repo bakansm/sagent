@@ -4,6 +4,7 @@ import { inngest } from "@/inngest/client";
 import { db } from "@/libs/db.lib";
 import { refreshDailyCredits } from "@/libs/server-utils.lib";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { MessageStatus } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 
 export const messageRouter = createTRPCRouter({
@@ -40,6 +41,7 @@ export const messageRouter = createTRPCRouter({
           .min(1, "Message is required")
           .max(1000, "Message is too long"),
         threadId: z.string().min(1, "Thread ID is required"),
+        status: z.nativeEnum(MessageStatus).default("COMPLETED"),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -77,16 +79,10 @@ export const messageRouter = createTRPCRouter({
           content: message,
           role: "USER",
           type: "RESULT",
+          status: input.status,
           threadId,
           userId: ctx.session?.userId,
         },
-      });
-
-      await db.user.update({
-        where: {
-          id: ctx.session?.userId,
-        },
-        data: { credits: user.credits - 1 },
       });
 
       await inngest.send({
@@ -97,7 +93,6 @@ export const messageRouter = createTRPCRouter({
       return {
         success: true,
         message: newMessage,
-        credits: user.credits - 1,
       };
     }),
 });

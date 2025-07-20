@@ -310,8 +310,6 @@ export default function SubscriptionCards() {
         account: walletAddress as Hex,
       });
 
-      console.log("subscription response", subscriptionTxHash);
-
       toast.success(
         <div>
           <div>Subscription transaction submitted!</div>

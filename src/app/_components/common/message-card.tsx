@@ -1,13 +1,19 @@
 "use client";
 
 import { cn } from "@/libs/utils.lib";
-import type { Fragment, MessageRole, MessageType } from "@prisma/client";
+import type {
+  Fragment,
+  MessageRole,
+  MessageStatus,
+  MessageType,
+} from "@prisma/client";
 import { format } from "date-fns";
 import {
   AlertCircleIcon,
   BotIcon,
   ChevronRightIcon,
   Code2Icon,
+  SparklesIcon,
   UserIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -20,6 +26,7 @@ interface AssistantMessageProps {
   onFragmentClick: (fragment: Fragment) => void;
   type: MessageType;
   createdAt: Date;
+  status: MessageStatus;
 }
 
 interface UserMessageProps {
@@ -96,8 +103,8 @@ function UserMessage({ content }: UserMessageProps) {
   return (
     <div className="flex justify-end px-4 pb-6">
       <div className="flex max-w-[80%] items-start gap-3">
-        <Card className="relative rounded-2xl border bg-gradient-to-r from-blue-500 to-purple-500 p-4 text-white shadow-lg backdrop-blur-sm">
-          <div className="relative z-10">{content}</div>
+        <Card className="relative rounded-2xl border-0 bg-gradient-to-r from-blue-500 to-purple-500 p-4 text-white shadow-lg">
+          {content}
         </Card>
 
         <div className="mt-1 flex-shrink-0">
@@ -117,6 +124,7 @@ function AssistantMessage({
   onFragmentClick,
   createdAt,
   type,
+  status,
 }: AssistantMessageProps) {
   const isError = type === "ERROR";
 
@@ -180,7 +188,21 @@ function AssistantMessage({
 
             <div className="relative z-10">
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                {content}
+                {status === "PROCESSING" ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500"></div>
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-purple-500 delay-75"></div>
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-green-500 delay-150"></div>
+                    </div>
+                    <span className="animate-pulse text-sm font-medium text-gray-600 dark:text-gray-400">
+                      {content}
+                    </span>
+                    <SparklesIcon className="h-4 w-4 animate-pulse text-yellow-500" />
+                  </div>
+                ) : (
+                  content
+                )}
               </div>
 
               {/* Fragment Preview */}
@@ -209,6 +231,7 @@ interface MessageCardProps {
   onFragmentClick: (fragment: Fragment) => void;
   type: MessageType;
   createdAt: Date;
+  status: MessageStatus;
 }
 
 export default function MessageCard({
@@ -219,6 +242,7 @@ export default function MessageCard({
   onFragmentClick,
   type,
   createdAt,
+  status,
 }: MessageCardProps) {
   if (role === "ASSISTANT")
     return (
@@ -229,6 +253,7 @@ export default function MessageCard({
         onFragmentClick={onFragmentClick}
         type={type}
         createdAt={createdAt}
+        status={status}
       />
     );
   return <UserMessage content={content} />;

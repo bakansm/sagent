@@ -24,12 +24,68 @@ export const callAgent = inngest.createFunction(
   { id: "call-agent" },
   { event: "agent/call" },
   async ({ event, step }) => {
-    const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create("sagent-nextjs", {
+    const initialMessage = await step.run("setup-environment", async () => {
+      const createdMessage = await db.message.create({
+        data: {
+          content: "Setting up environment...",
+          role: "ASSISTANT",
+          type: "TEXT",
+          status: "PROCESSING",
+          threadId: event.data.threadId,
+          userId: event.data.userId,
+          fragments: {
+            create: {
+              sandboxId: "",
+              sandboxUrl: "",
+              title: "Sandbox Info",
+              files: {},
+            },
+          },
+        },
+      });
+      return createdMessage;
+    });
+    const initialMessageId = initialMessage.id;
+
+    const sandboxId = await step.run("create-sandbox", async () => {
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Creating sandbox...",
+        },
+      });
+
+      const { sandboxId } = await Sandbox.create("sagent-nextjs", {
         timeoutMs: 1000 * 60 * 60,
         apiKey: env.E2B_API_KEY,
       });
-      return sandbox.sandboxId;
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Sandbox created. Connecting to sandbox...",
+          fragments: { update: { sandboxId } },
+        },
+      });
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Connecting to sandbox...",
+        },
+      });
+
+      const sandbox = await getSandbox(sandboxId);
+      const host = sandbox?.getHost(3000);
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Sandbox connected. Starting agent...",
+          fragments: { update: { sandboxUrl: `https://${host ?? ""}` } },
+        },
+      });
+
+      return sandboxId;
     });
 
     const codeAgent = createAgent<AgentState>({
@@ -40,11 +96,11 @@ export const callAgent = inngest.createFunction(
       model: gemini({
         model: "gemini-2.5-pro",
         apiKey: env.GEMINI_API_KEY,
-        defaultParameters: {
-          generationConfig: {
-            temperature: 0.1,
-          },
-        },
+        // defaultParameters: {
+        //   generationConfig: {
+        //     temperature: 0.3,
+        //   },
+        // },
       }),
       tools: [
         createTool({
@@ -59,6 +115,17 @@ export const callAgent = inngest.createFunction(
 
               try {
                 const sandbox = await getSandbox(sandboxId);
+
+                const messageContent = `Executing terminal command: \`${command}\``;
+
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: messageContent,
+                    type: "TEXT",
+                  },
+                });
+
                 const result = await sandbox.commands.run(command, {
                   onStdout: (data) => {
                     buffers.stdout += data;
@@ -74,7 +141,17 @@ export const callAgent = inngest.createFunction(
                 console.error(
                   `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`,
                 );
-                return `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`;
+
+                const messageContent = `Command \`${command}\` failed.`;
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: messageContent,
+                    type: "ERROR",
+                  },
+                });
+
+                return messageContent;
               }
             });
           },
@@ -104,6 +181,19 @@ export const callAgent = inngest.createFunction(
                     await sandbox.files.write(file.path, file.content);
                     updatedFiles[file.path] = file.content;
                   }
+
+                  // Update the message content and fragments with the updated files
+                  await db.message.update({
+                    where: { id: initialMessageId },
+                    data: {
+                      content: `Creating and updating files`,
+                      fragments: {
+                        update: {
+                          files: updatedFiles,
+                        },
+                      },
+                    },
+                  });
 
                   return updatedFiles;
                 } catch (error) {
@@ -139,6 +229,15 @@ export const callAgent = inngest.createFunction(
                     content,
                   });
                 }
+
+                // Update the message content with the read files
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: `Reading files`,
+                  },
+                });
+
                 return JSON.stringify(contents);
               } catch (error) {
                 const errorMessage =
@@ -180,54 +279,122 @@ export const callAgent = inngest.createFunction(
 
     const result = await network.run(event.data.value);
 
-    const isError =
-      !result.state.data.summary ||
-      Object.keys(result.state.data.files ?? {}).length === 0;
-
-    const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      const sandbox = await getSandbox(sandboxId);
-      const host = sandbox.getHost(3000);
-      return `https://${host}`;
+    const generateTitleAgent = createAgent<AgentState>({
+      name: "fragment-title-generator",
+      description: "A fragment title generator",
+      system: PROMPT.FRAGMENT_TITLE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
     });
 
-    await step.run("create-message", async () => {
-      if (isError) {
-        return await db.message.create({
-          data: {
-            content: "Some thing went wrong. Please try again.",
-            role: "ASSISTANT",
-            type: "ERROR",
-            threadId: event.data.threadId,
-            userId: event.data.userId,
-          },
-        });
+    const generateContentAgent = createAgent<AgentState>({
+      name: "response-generator",
+      description: "A response generator",
+      system: PROMPT.RESPONSE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
+    });
+
+    const { output: generatedTitle } = await generateTitleAgent.run(
+      result.state.data.summary,
+    );
+
+    const { output: generatedContent } = await generateContentAgent.run(
+      result.state.data.summary,
+    );
+
+    await step.run("generate-fragment-title", async () => {
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Generating fragment title...",
+        },
+      });
+
+      let title = "New Thread";
+
+      if (generatedTitle[0]?.type !== "text") {
+        title = "New Thread";
+      } else {
+        if (Array.isArray(generatedTitle[0].content)) {
+          title = generatedTitle[0].content.map((c) => c).join("");
+        } else {
+          title = generatedTitle[0].content;
+        }
       }
 
-      return await db.message.create({
+      await db.message.update({
+        where: { id: initialMessageId },
         data: {
-          content: result.state.data.summary,
-          threadId: event.data.threadId,
-          role: "ASSISTANT",
-          type: "RESULT",
-          userId: event.data.userId,
-          fragments: {
-            create: {
-              sandboxId,
-              sandboxUrl,
-              title: "Fragment",
-              files: result.state.data.files,
-            },
-          },
+          fragments: { update: { title } },
         },
       });
     });
 
-    return {
-      url: sandboxUrl,
-      sandboxId,
-      title: "Fragment",
-      files: result.state.data.files,
-      summary: result.state.data.summary,
-    };
+    await step.run("generate-response", async () => {
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Generating response...",
+        },
+      });
+
+      let content;
+
+      if (generatedContent[0]?.type !== "text") {
+        content = "Something went wrong. Please try again.";
+      } else {
+        if (Array.isArray(generatedContent[0].content)) {
+          content = generatedContent[0].content.map((c) => c).join("");
+        } else {
+          content = generatedContent[0].content;
+        }
+      }
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content,
+        },
+      });
+    });
+
+    const isError =
+      !result.state.data.summary ||
+      Object.keys(result.state.data.files ?? {}).length === 0;
+
+    await step.run("update-final-message", async () => {
+      if (isError) {
+        return await db.message.update({
+          where: { id: initialMessageId },
+          data: {
+            type: "ERROR",
+            status: "FAILED",
+            fragments: {
+              update: {
+                files: {},
+              },
+            },
+          },
+        });
+      }
+
+      await db.user.update({
+        where: { id: event.data.userId },
+        data: { credits: { decrement: 1 } },
+      });
+
+      return await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          type: "RESULT",
+          status: "COMPLETED",
+        },
+      });
+    });
   },
 );
