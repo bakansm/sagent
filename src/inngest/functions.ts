@@ -21,11 +21,11 @@ interface AgentState {
 }
 
 export const callAgent = inngest.createFunction(
-  { id: "call-agent-corrected", concurrency: 5 },
+  { id: "call-agent" },
   { event: "agent/call" },
   async ({ event, step }) => {
-    const initialMessage = await step.run("setup-environment", () => {
-      return db.message.create({
+    const initialMessage = await step.run("setup-environment", async () => {
+      const createdMessage = await db.message.create({
         data: {
           content: "Setting up environment...",
           role: "ASSISTANT",
@@ -43,127 +43,206 @@ export const callAgent = inngest.createFunction(
           },
         },
       });
+      return createdMessage;
     });
     const initialMessageId = initialMessage.id;
 
     const sandboxId = await step.run("create-sandbox", async () => {
       await db.message.update({
         where: { id: initialMessageId },
-        data: { content: "Provisioning a secure cloud sandbox..." },
+        data: {
+          content: "Creating sandbox...",
+        },
       });
 
-      const sandbox = await Sandbox.create("sagent-nextjs", {
-        timeoutMs: 1000 * 60 * 60, // 1 hour
+      const { sandboxId } = await Sandbox.create("sagent-nextjs", {
+        timeoutMs: 1000 * 60 * 60,
         apiKey: env.E2B_API_KEY,
       });
-
-      // We only need the sandbox ID and host. The getSandbox utility will reconnect as needed.
-      const host = sandbox.getHost(3000);
 
       await db.message.update({
         where: { id: initialMessageId },
         data: {
-          content: "Sandbox ready. Starting agent...",
-          fragments: {
-            update: {
-              sandboxId: sandbox.sandboxId,
-              sandboxUrl: `https://${host ?? ""}`,
-            },
-          },
+          content: "Sandbox created. Connecting to sandbox...",
+          fragments: { update: { sandboxId } },
         },
       });
-      return sandbox.sandboxId;
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Connecting to sandbox...",
+        },
+      });
+
+      const sandbox = await getSandbox(sandboxId);
+      const host = sandbox?.getHost(3000);
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Sandbox connected. Starting agent...",
+          fragments: { update: { sandboxUrl: `https://${host ?? ""}` } },
+        },
+      });
+
+      return sandboxId;
     });
 
     const codeAgent = createAgent<AgentState>({
       name: "code-agent",
-      system: PROMPT.SYSTEM,
-      model: gemini({ model: "gemini-2.5-pro", apiKey: env.GEMINI_API_KEY }),
+      description: "An expert coding agent",
+      system: PROMPT.SYSTEM_BACKUP,
+
+      model: gemini({
+        model: "gemini-2.5-pro",
+        apiKey: env.GEMINI_API_KEY,
+        // defaultParameters: {
+        //   generationConfig: {
+        //     temperature: 0.3,
+        //   },
+        // },
+      }),
       tools: [
         createTool({
           name: "terminal",
-          description: "Run terminal commands.",
-          parameters: z.object({ command: z.string() }),
+          description: "Run terminal commands",
+          parameters: z.object({
+            command: z.string(),
+          }),
           handler: async ({ command }, { step }: Tool.Options<AgentState>) => {
-            return await step?.run("tool-terminal", async () => {
-              await db.message.update({
-                where: { id: initialMessageId },
-                data: { content: `Executing: \`${command}\`` },
-              });
-              const sandbox = await getSandbox(sandboxId);
+            return await step?.run("terminal", async () => {
+              const buffers = { stdout: "", stderr: "" };
+
               try {
-                const { stdout, stderr } = await sandbox.commands.run(command);
-                if (stderr) return `Error: ${stderr}`;
-                return stdout;
+                const sandbox = await getSandbox(sandboxId);
+
+                const messageContent = `Executing terminal command: \`${command}\``;
+
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: messageContent,
+                    type: "TEXT",
+                  },
+                });
+
+                const result = await sandbox.commands.run(command, {
+                  onStdout: (data) => {
+                    buffers.stdout += data;
+                  },
+                  onStderr: (data) => {
+                    buffers.stderr += data;
+                  },
+                });
+
+                return result.stdout;
               } catch (e) {
-                return `Execution Error: ${e instanceof Error ? e.message : String(e)}`;
+                const errorMessage = e instanceof Error ? e.message : String(e);
+                console.error(
+                  `Command failed: ${errorMessage} \nstdout: ${buffers.stdout}\nstderr: ${buffers.stderr}`,
+                );
+
+                const messageContent = `Command \`${command}\` failed.`;
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: messageContent,
+                    type: "ERROR",
+                  },
+                });
+
+                return messageContent;
               }
             });
           },
         }),
         createTool({
           name: "createOrUpdateFiles",
-          description: "Create or update files.",
+          description: "Create or update files in the sandbox",
           parameters: z.object({
-            files: z.array(z.object({ path: z.string(), content: z.string() })),
+            files: z.array(
+              z.object({
+                path: z.string(),
+                content: z.string(),
+              }),
+            ),
           }),
           handler: async (
             { files },
             { network, step }: Tool.Options<AgentState>,
           ) => {
-            return await step?.run("tool-write-files", async () => {
-              const filePaths = files.map((f) => f.path).join(", ");
-              await db.message.update({
-                where: { id: initialMessageId },
-                data: { content: `Writing files: ${filePaths}` },
-              });
-
-              const sandbox = await getSandbox(sandboxId);
-              const updatedFiles = network.state.data.files || {};
-              try {
-                // OPTIMIZATION: Parallelize file writing with Promise.all.
-                await Promise.all(
-                  files.map(async (file) => {
+            const newFiles = await step?.run(
+              "createOrUpdateFiles",
+              async () => {
+                try {
+                  const updatedFiles = network.state.data.files || {};
+                  const sandbox = await getSandbox(sandboxId);
+                  for (const file of files) {
                     await sandbox.files.write(file.path, file.content);
                     updatedFiles[file.path] = file.content;
-                  }),
-                );
+                  }
 
-                network.state.data.files = updatedFiles;
-                await db.message.update({
-                  where: { id: initialMessageId },
-                  data: { fragments: { update: { files: updatedFiles } } },
-                });
-                return `Successfully wrote ${files.length} files.`;
-              } catch (e) {
-                return `Error writing files: ${e instanceof Error ? e.message : String(e)}`;
-              }
-            });
+                  // Update the message content and fragments with the updated files
+                  await db.message.update({
+                    where: { id: initialMessageId },
+                    data: {
+                      content: `Creating and updating files`,
+                      fragments: {
+                        update: {
+                          files: updatedFiles,
+                        },
+                      },
+                    },
+                  });
+
+                  return updatedFiles;
+                } catch (error) {
+                  const errorMessage =
+                    error instanceof Error ? error.message : String(error);
+                  return "Error: " + errorMessage;
+                }
+              },
+            );
+
+            if (typeof newFiles === "object") {
+              network.state.data.files = newFiles;
+            }
+
+            return newFiles;
           },
         }),
         createTool({
           name: "readFiles",
-          description: "Read files.",
-          parameters: z.object({ files: z.array(z.string()) }),
+          description: "Read files from the sandbox",
+          parameters: z.object({
+            files: z.array(z.string()),
+          }),
           handler: async ({ files }, { step }: Tool.Options<AgentState>) => {
-            return await step?.run("tool-read-files", async () => {
-              await db.message.update({
-                where: { id: initialMessageId },
-                data: { content: `Reading files: ${files.join(", ")}` },
-              });
-
-              const sandbox = await getSandbox(sandboxId);
+            return await step?.run("readFiles", async () => {
               try {
-                // OPTIMIZATION: Parallelize file reading with Promise.all.
-                const contents = await Promise.all(
-                  files.map(async (file) => ({
+                const sandbox = await getSandbox(sandboxId);
+                const contents = [];
+                for (const file of files) {
+                  const content = await sandbox.files.read(file);
+                  contents.push({
                     path: file,
-                    content: await sandbox.files.read(file),
-                  })),
-                );
+                    content,
+                  });
+                }
+
+                // Update the message content with the read files
+                await db.message.update({
+                  where: { id: initialMessageId },
+                  data: {
+                    content: `Reading files`,
+                  },
+                });
+
                 return JSON.stringify(contents);
-              } catch (e) {
-                return `Error reading files: ${e instanceof Error ? e.message : String(e)}`;
+              } catch (error) {
+                const errorMessage =
+                  error instanceof Error ? error.message : String(error);
+                return "Error: " + errorMessage;
               }
             });
           },
@@ -171,10 +250,15 @@ export const callAgent = inngest.createFunction(
       ],
       lifecycle: {
         onResponse: async ({ result, network }) => {
-          const lastText = lastAssistantTextMessageContent(result);
-          if (lastText?.includes("<task_summary>") && network) {
-            network.state.data.summary = lastText;
+          const lastAssistantMessageText =
+            lastAssistantTextMessageContent(result);
+
+          if (lastAssistantMessageText && network) {
+            if (lastAssistantMessageText.includes("<task_summary>")) {
+              network.state.data.summary = lastAssistantMessageText;
+            }
           }
+
           return result;
         },
       },
@@ -184,71 +268,131 @@ export const callAgent = inngest.createFunction(
       name: "coding-agent-network",
       agents: [codeAgent],
       maxIter: 15,
-      router: ({ network }) =>
-        network.state.data.summary ? undefined : codeAgent,
+      router: async ({ network }) => {
+        const summary = network.state.data.summary;
+        if (summary) {
+          return;
+        }
+        return codeAgent;
+      },
     });
 
     const result = await network.run(event.data.value);
 
-    if (!result.state.data.summary) {
-      return await step.run("handle-failure", () =>
-        db.message.update({
-          where: { id: initialMessageId },
-          data: {
-            content: "Agent failed to complete the task.",
-            type: "ERROR",
-            status: "FAILED",
-          },
-        }),
-      );
-    }
+    const generateTitleAgent = createAgent<AgentState>({
+      name: "fragment-title-generator",
+      description: "A fragment title generator",
+      system: PROMPT.FRAGMENT_TITLE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
+    });
 
-    await step.run("generate-final-response", async () => {
+    const generateContentAgent = createAgent<AgentState>({
+      name: "response-generator",
+      description: "A response generator",
+      system: PROMPT.RESPONSE_PROMPT,
+      model: gemini({
+        model: "gemini-2.5-flash",
+        apiKey: env.GEMINI_API_KEY,
+      }),
+    });
+
+    const { output: generatedTitle } = await generateTitleAgent.run(
+      result.state.data.summary,
+    );
+
+    const { output: generatedContent } = await generateContentAgent.run(
+      result.state.data.summary,
+    );
+
+    await step.run("generate-fragment-title", async () => {
       await db.message.update({
         where: { id: initialMessageId },
-        data: { content: "Generating final response..." },
+        data: {
+          content: "Generating fragment title...",
+        },
       });
 
-      const generateTitleAgent = createAgent({
-        name: "title-gen",
-        system: PROMPT.FRAGMENT_TITLE_PROMPT,
-        model: gemini({
-          model: "gemini-2.5-flash",
-          apiKey: env.GEMINI_API_KEY,
-        }),
+      let title = "New Thread";
+
+      if (generatedTitle[0]?.type !== "text") {
+        title = "New Thread";
+      } else {
+        if (Array.isArray(generatedTitle[0].content)) {
+          title = generatedTitle[0].content.map((c) => c).join("");
+        } else {
+          title = generatedTitle[0].content;
+        }
+      }
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          fragments: { update: { title } },
+        },
       });
-      const generateContentAgent = createAgent({
-        name: "content-gen",
-        system: PROMPT.RESPONSE_PROMPT,
-        model: gemini({
-          model: "gemini-2.5-flash",
-          apiKey: env.GEMINI_API_KEY,
-        }),
+    });
+
+    await step.run("generate-response", async () => {
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content: "Generating response...",
+        },
       });
 
-      const [titleResult, contentResult] = await Promise.all([
-        generateTitleAgent.run(result.state.data.summary),
-        generateContentAgent.run(result.state.data.summary),
-      ]);
+      let content;
 
-      const title =
-        lastAssistantTextMessageContent(titleResult) ?? "Generated Code";
-      const content =
-        lastAssistantTextMessageContent(contentResult) ??
-        "The agent has completed the task.";
+      if (generatedContent[0]?.type !== "text") {
+        content = "Something went wrong. Please try again.";
+      } else {
+        if (Array.isArray(generatedContent[0].content)) {
+          content = generatedContent[0].content.map((c) => c).join("");
+        } else {
+          content = generatedContent[0].content;
+        }
+      }
+
+      await db.message.update({
+        where: { id: initialMessageId },
+        data: {
+          content,
+        },
+      });
+    });
+
+    const isError =
+      !result.state.data.summary ||
+      Object.keys(result.state.data.files ?? {}).length === 0;
+
+    await step.run("update-final-message", async () => {
+      if (isError) {
+        return await db.message.update({
+          where: { id: initialMessageId },
+          data: {
+            type: "ERROR",
+            status: "FAILED",
+            fragments: {
+              update: {
+                files: {},
+              },
+            },
+          },
+        });
+      }
 
       await db.user.update({
         where: { id: event.data.userId },
         data: { credits: { decrement: 1 } },
       });
 
-      return db.message.update({
+      return await db.message.update({
         where: { id: initialMessageId },
         data: {
-          content,
           type: "RESULT",
           status: "COMPLETED",
-          fragments: { update: { title } },
         },
       });
     });

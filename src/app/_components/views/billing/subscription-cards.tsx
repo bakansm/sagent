@@ -12,10 +12,9 @@ import {
 } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { parseUnits, type Hex } from "viem";
+import { type Hex } from "viem";
 import {
   useChainId,
-  useReadContract,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
@@ -29,9 +28,16 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 
-// Helper function to create explorer link
-const getExplorerLink = (txHash: string) => {
-  return `https://sagent-2751288990640000-1.sagaexplorer.io/tx/${txHash}`;
+// Helper function to create explorer link based on chain
+const getExplorerLink = (txHash: string, chainId: number) => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return `https://sagent-2751288990640000-1.sagaexplorer.io/tx/${txHash}`;
+    case liskSepolia.id:
+      return `https://sepolia-blockscout.lisk.com/tx/${txHash}`;
+    default:
+      return `https://sepolia-blockscout.lisk.com/tx/${txHash}`;
+  }
 };
 
 // Helper function to get contract address by chainId
@@ -46,18 +52,6 @@ const getContractAddress = (chainId: number): string => {
   }
 };
 
-// Helper function to get stable coin address by chainId
-const getStableCoinAddress = (chainId: number): string => {
-  switch (chainId) {
-    case sagentTestnet.id:
-      return ADDRESS.SAGENT_CHAIN.STABLE_COIN;
-    case liskSepolia.id:
-      return ADDRESS.LISK_SEPOLIA.STABLE_COIN;
-    default:
-      throw new Error(`Unsupported chain ID: ${chainId}`);
-  }
-};
-
 export default function SubscriptionCards() {
   const { authenticated, login } = usePrivy();
   const { wallets } = useWallets();
@@ -66,6 +60,7 @@ export default function SubscriptionCards() {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [planToConfirm, setPlanToConfirm] = useState<PlanType | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+
   const processedTxRef = useRef<string | null>(null);
   const hasSyncedRef = useRef(false);
 
@@ -77,17 +72,6 @@ export default function SubscriptionCards() {
 
   // Prefer external wallet, but fallback to embedded if that's all we have
   const walletAddress = externalWallet?.address ?? embeddedWalletAddress;
-
-  // Check current stablecoin allowance for subscription manager
-  const { data: currentAllowance } = useReadContract({
-    address: getStableCoinAddress(chainId) as Hex,
-    abi: ABI.STABLE_COIN,
-    functionName: "allowance",
-    args: [walletAddress as Hex, getContractAddress(chainId) as Hex],
-    query: {
-      enabled: !!walletAddress,
-    },
-  });
 
   // Get billing info from database (not contract directly)
   const { data: billingInfo, refetch: refetchBillingInfo } =
@@ -178,7 +162,7 @@ export default function SubscriptionCards() {
               <div>
                 <div>Subscription successful!</div>
                 <a
-                  href={getExplorerLink(txHash)}
+                  href={getExplorerLink(txHash, chainId)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 underline hover:text-blue-800"
@@ -277,62 +261,17 @@ export default function SubscriptionCards() {
     // Reset processed transaction ref for new subscription
     processedTxRef.current = null;
 
-    // Get plan pricing in SUSDC (assuming 18 decimals like most ERC20 tokens)
-    const planAmounts = {
-      [PlanType.PRO]: parseUnits("19", 18), // 19 SUSDC
-      [PlanType.PREMIUM]: parseUnits("39", 18), // 39 SUSDC
-    };
-
-    const amount = planAmounts[planToConfirm];
-
     // Set pending plan for transaction tracking
     setPendingPlan(planToConfirm);
 
     try {
-      // Check if we need to approve first
-      const needsApproval = !currentAllowance || currentAllowance < amount;
-
-      if (needsApproval) {
-        toast.info("Approving SUSDC spending...");
-
-        // First approve the stablecoin
-        const approveTxHash = await writeContractAsync({
-          address: getStableCoinAddress(chainId) as Hex,
-          abi: ABI.STABLE_COIN,
-          functionName: "approve",
-          args: [getContractAddress(chainId) as Hex, amount],
-          account: walletAddress as Hex,
-        });
-
-        toast.success(
-          <div>
-            <div>Approval successful!</div>
-            <a
-              href={getExplorerLink(approveTxHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 underline hover:text-blue-800"
-            >
-              View on Explorer: {approveTxHash.slice(0, 10)}...
-              {approveTxHash.slice(-8)}
-            </a>
-          </div>,
-        );
-
-        toast.info(
-          "Approval transaction submitted! Waiting for confirmation...",
-        );
-
-        // Wait for approval to be confirmed
-        // Note: In a real implementation, you might want to wait for the approval transaction
-        // to be confirmed before proceeding to the subscription
-      }
-
       // Get the appropriate subscription function name
       const functionName =
         planToConfirm === PlanType.PRO ? "subscribePro" : "subscribePremium";
 
-      // Call the subscription function
+      toast.info("Submitting subscription transaction...");
+
+      // Call the subscription function directly (no approval needed)
       const subscriptionTxHash = await writeContractAsync({
         address: getContractAddress(chainId) as Hex,
         abi: ABI.SUBSCRIPTION_MANAGER,
@@ -344,7 +283,7 @@ export default function SubscriptionCards() {
         <div>
           <div>Subscription transaction submitted!</div>
           <a
-            href={getExplorerLink(subscriptionTxHash)}
+            href={getExplorerLink(subscriptionTxHash, chainId)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 underline hover:text-blue-800"
