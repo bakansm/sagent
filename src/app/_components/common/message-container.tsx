@@ -3,7 +3,7 @@
 import MessageCard from "@/app/_components/common/message-card";
 import { api } from "@/trpc/react";
 import type { Fragment } from "@prisma/client";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { ScrollArea } from "../ui/scroll-area";
 import MessageForm from "./message-form";
 import ThreadHeader from "./thread-header";
@@ -60,13 +60,6 @@ export default function MessageContainer({
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, bottomRef]);
-
-  const isLastMessageProcessing = useMemo(() => {
-    const lastMessage = messages?.[messages.length - 1];
-    return (
-      lastMessage?.role === "ASSISTANT" && lastMessage.status === "PROCESSING"
-    );
-  }, [messages]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-b from-gray-50/30 to-white/50 dark:from-gray-950/30 dark:to-gray-900/50">

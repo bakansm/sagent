@@ -1,6 +1,6 @@
 import { sagentChain } from "@/configs/chain";
-import { ABI } from "@/constants/abi";
-import { ADDRESS } from "@/constants/address";
+import { ABI } from "@/constants/abi.constant";
+import { ADDRESS } from "@/constants/address.constant";
 import { db } from "@/libs/db.lib";
 import {
   getDailyCreditLimit,

@@ -1,7 +1,7 @@
 "use client";
 
-import { ABI } from "@/constants/abi";
-import { ADDRESS } from "@/constants/address";
+import { ABI } from "@/constants/abi.constant";
+import { ADDRESS } from "@/constants/address.constant";
 import { api } from "@/trpc/react";
 import { PlanType } from "@prisma/client";
 import {
@@ -9,7 +9,7 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { parseUnits, type Hex } from "viem";
 import {
@@ -40,6 +40,25 @@ export default function SubscriptionCards() {
   const [planToConfirm, setPlanToConfirm] = useState<PlanType | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const processedTxRef = useRef<string | null>(null);
+  const hasSyncedRef = useRef(false);
+
+  const embeddedWallet = getEmbeddedConnectedWallet(wallets);
+
+  const handleSign = useCallback(async () => {
+    const provider = await embeddedWallet?.getEthereumProvider();
+
+    const result = await provider?.request({
+      method: "subscribePro",
+      params: [
+        {
+          from: embeddedWallet?.address,
+          to: ADDRESS.SUBSCRIPTION_MANAGER,
+        },
+      ],
+    });
+
+    console.log("result: ", result);
+  }, [embeddedWallet]);
 
   // Get the actual external wallet address (filter out embedded wallet)
   const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
@@ -93,30 +112,30 @@ export default function SubscriptionCards() {
   // Backend subscription mutation for database updates
   const subscribeMutation = api.user.subscribeToPlan.useMutation();
 
+  const handleSyncContract = useCallback(async () => {
+    if (!walletAddress || isSyncing) return;
+    setIsSyncing(true);
+    await syncContractMutation
+      .mutateAsync({ walletAddress })
+      .then(async () => {
+        await refetchBillingInfo();
+      })
+      .catch((error) => {
+        console.error("Failed to sync contract status:", error);
+      })
+      .finally(() => {
+        setIsSyncing(false);
+      });
+  }, [walletAddress, isSyncing, syncContractMutation, refetchBillingInfo]);
+
   // Sync contract status on first load
   useEffect(() => {
-    if (authenticated && walletAddress && !isSyncing) {
+    if (authenticated && walletAddress && !isSyncing && !hasSyncedRef.current) {
       setIsSyncing(true);
-      void syncContractMutation
-        .mutateAsync({ walletAddress })
-        .then(() => {
-          // Refresh billing info after sync
-          void refetchBillingInfo();
-        })
-        .catch((error) => {
-          console.error("Failed to sync contract status on load:", error);
-        })
-        .finally(() => {
-          setIsSyncing(false);
-        });
+      handleSyncContract();
+      hasSyncedRef.current = true;
     }
-  }, [
-    authenticated,
-    walletAddress,
-    syncContractMutation,
-    refetchBillingInfo,
-    isSyncing,
-  ]);
+  }, [authenticated, walletAddress, handleSyncContract]);
 
   // Handle transaction success/error
   useEffect(() => {
@@ -188,54 +207,48 @@ export default function SubscriptionCards() {
     walletAddress,
   ]);
 
-  useEffect(() => {
-    if (isSyncing) {
-      const timer = setTimeout(() => {
-        void refetchBillingInfo();
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [isSyncing, refetchBillingInfo]);
-
-  const handleSubscribe = async (plan: PlanType) => {
-    if (!authenticated) {
-      login();
-      return;
-    }
-
-    if (!walletAddress) {
-      toast.error("Wallet not connected. Please connect your wallet first.");
-      return;
-    }
-
-    // Reset any previous state
-    processedTxRef.current = null;
-    setPendingPlan(null);
-
-    // Handle free plan (no contract interaction needed)
-    if (plan === PlanType.FREE) {
-      try {
-        const result = await subscribeMutation.mutateAsync({
-          plan,
-          walletAddress,
-        });
-        if (result.success) {
-          toast.success(result.message);
-          await utils.user.getBillingInfo.invalidate();
-        } else {
-          toast.error(result.error);
-        }
-      } catch (error) {
-        console.log(error);
-        toast.error("Failed to switch to free plan");
+  const handleSubscribe = useCallback(
+    async (plan: PlanType) => {
+      if (!authenticated) {
+        login();
+        return;
       }
-      return;
-    }
 
-    // For paid plans, open confirmation modal
-    setPlanToConfirm(plan);
-    setConfirmationOpen(true);
-  };
+      if (!walletAddress) {
+        toast.error("Wallet not connected. Please connect your wallet first.");
+        return;
+      }
+
+      // Reset any previous state
+      processedTxRef.current = null;
+      setPendingPlan(null);
+
+      // Handle free plan (no contract interaction needed)
+      if (plan === PlanType.FREE) {
+        try {
+          const result = await subscribeMutation.mutateAsync({
+            plan,
+            walletAddress,
+          });
+          if (result.success) {
+            toast.success(result.message);
+            await utils.user.getBillingInfo.invalidate();
+          } else {
+            toast.error(result.error);
+          }
+        } catch (error) {
+          console.log(error);
+          toast.error("Failed to switch to free plan");
+        }
+        return;
+      }
+
+      // For paid plans, open confirmation modal
+      setPlanToConfirm(plan);
+      setConfirmationOpen(true);
+    },
+    [authenticated, login, walletAddress, subscribeMutation, utils],
+  );
 
   const handleConfirmSubscription = async () => {
     if (!planToConfirm || !walletAddress || planToConfirm === PlanType.FREE)
@@ -370,17 +383,28 @@ export default function SubscriptionCards() {
     return expiration.toLocaleDateString();
   };
 
-  const isButtonDisabled = (plan: PlanType) => {
-    return (
-      isCurrentPlan(plan) ||
-      isWritingContract ||
-      isConfirming ||
-      subscribeMutation.isPending ||
-      syncContractMutation.isPending ||
-      (pendingPlan !== null && pendingPlan !== plan) ||
-      isSyncing
-    );
-  };
+  const isButtonDisabled = useCallback(
+    (plan: PlanType) => {
+      return (
+        isCurrentPlan(plan) ||
+        isWritingContract ||
+        isConfirming ||
+        subscribeMutation.isPending ||
+        syncContractMutation.isPending ||
+        (pendingPlan !== null && pendingPlan !== plan) ||
+        isSyncing
+      );
+    },
+    [
+      isCurrentPlan,
+      isWritingContract,
+      isConfirming,
+      subscribeMutation.isPending,
+      syncContractMutation.isPending,
+      pendingPlan,
+      isSyncing,
+    ],
+  );
 
   return (
     <section className="space-y-8 px-4 pb-[8vh] sm:space-y-12 sm:px-6 lg:px-8">

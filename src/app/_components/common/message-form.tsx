@@ -39,7 +39,7 @@ export default function MessageForm({ threadId }: MessageFormProps) {
         if (result.success) {
           form.reset();
           await refetchMessages();
-          await utils.user.getUser.invalidate();
+          await utils.user.getBillingInfo.invalidate();
           toast.success("Message sent successfully!");
         } else {
           toast.error(result.error);

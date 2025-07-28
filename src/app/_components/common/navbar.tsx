@@ -6,7 +6,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/_components/ui/dropdown-menu";
-import { usePrivy } from "@privy-io/react-auth";
+import {
+  getEmbeddedConnectedWallet,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import { CopyIcon, CreditCardIcon, LogOutIcon, WalletIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -15,6 +19,15 @@ import { Button } from "../ui/button";
 
 export default function Navbar() {
   const { authenticated, user, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+
+  const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
+  const externalWallet = wallets.find(
+    (wallet) => wallet.address !== embeddedWalletAddress,
+  );
+
+  // Prefer external wallet, but fallback to embedded if that's all we have
+  const walletAddress = externalWallet?.address ?? embeddedWalletAddress;
 
   return (
     <nav className="bg-white-30 dark:bg-white-30 fixed top-0 right-0 left-0 z-1 p-4 backdrop-blur-md transition-all duration-200">
@@ -47,8 +60,8 @@ export default function Navbar() {
               >
                 <WalletIcon className="mr-2 h-4 w-4" />
                 <span className="font-medium">
-                  {user?.wallet?.address?.slice(0, 6)}...
-                  {user?.wallet?.address?.slice(-4)}
+                  {walletAddress?.slice(0, 6)}...
+                  {walletAddress?.slice(-4)}
                 </span>
               </Button>
             </DropdownMenuTrigger>
@@ -59,7 +72,7 @@ export default function Navbar() {
               <DropdownMenuItem
                 onClick={() => {
                   void navigator.clipboard.writeText(
-                    user?.wallet?.address ?? "",
+                    walletAddress ?? "",
                   );
                   toast.success("Address copied!");
                 }}

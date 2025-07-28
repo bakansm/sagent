@@ -15,7 +15,7 @@ import {
   ShieldCheckIcon,
   TrendingUpIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export default function SubscriptionStatusSection() {
   const { authenticated } = usePrivy();
@@ -31,6 +31,11 @@ export default function SubscriptionStatusSection() {
   // Prefer external wallet, but fallback to embedded if that's all we have
   const walletAddress = externalWallet?.address ?? embeddedWalletAddress;
 
+  console.log("wallets: ", wallets);
+  console.log("embeddedWalletAddress: ", embeddedWalletAddress);
+  console.log("externalWallet: ", externalWallet);
+  console.log("walletAddress: ", walletAddress);
+
   // Get user data from database
   const { data: user } = api.user.getUser.useQuery(undefined, {
     enabled: authenticated,
@@ -45,7 +50,7 @@ export default function SubscriptionStatusSection() {
   // Contract sync mutation
   const syncContractMutation = api.user.syncContractStatus.useMutation();
 
-  const handleSyncContract = async () => {
+  const handleSyncContract = useCallback(async () => {
     if (!walletAddress || isSyncing) return;
 
     setIsSyncing(true);
@@ -57,7 +62,7 @@ export default function SubscriptionStatusSection() {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [walletAddress, isSyncing, syncContractMutation, refetchBillingInfo]);
 
   const formatTimestamp = (date: Date | string | null) => {
     if (!date) return null;

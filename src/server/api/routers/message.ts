@@ -3,7 +3,11 @@ import z from "zod";
 import { inngest } from "@/inngest/client";
 import { db } from "@/libs/db.lib";
 import { refreshDailyCredits } from "@/libs/server-utils.lib";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "@/server/api/trpc";
 import { MessageStatus } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 
@@ -93,6 +97,22 @@ export const messageRouter = createTRPCRouter({
       return {
         success: true,
         message: newMessage,
+      };
+    }),
+
+  testAgent: publicProcedure
+    .input(z.object({ message: z.string() }))
+    .mutation(async ({ input }) => {
+      const { message } = input;
+
+      await inngest.send({
+        name: "test/agent",
+        data: { value: message },
+      });
+
+      return {
+        success: true,
+        message: "Agent called successfully",
       };
     }),
 });
