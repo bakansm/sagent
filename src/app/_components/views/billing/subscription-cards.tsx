@@ -69,24 +69,6 @@ export default function SubscriptionCards() {
   const processedTxRef = useRef<string | null>(null);
   const hasSyncedRef = useRef(false);
 
-  const embeddedWallet = getEmbeddedConnectedWallet(wallets);
-
-    const handleSign = useCallback(async () => {
-    const provider = await embeddedWallet?.getEthereumProvider();
-
-    const result = await provider?.request({
-      method: "subscribePro",
-      params: [
-        {
-          from: embeddedWallet?.address,
-          to: getContractAddress(chainId),
-        },
-      ],
-    });
-
-    console.log("result: ", result);
-  }, [embeddedWallet, chainId]);
-
   // Get the actual external wallet address (filter out embedded wallet)
   const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
   const externalWallet = wallets.find(
@@ -382,9 +364,12 @@ export default function SubscriptionCards() {
     }
   };
 
-  const isCurrentPlan = useCallback((plan: PlanType) => {
-    return authenticated && billingInfo?.plan === plan;
-  }, [authenticated, billingInfo?.plan]);
+  const isCurrentPlan = useCallback(
+    (plan: PlanType) => {
+      return authenticated && billingInfo?.plan === plan;
+    },
+    [authenticated, billingInfo?.plan],
+  );
 
   const getButtonText = (plan: PlanType) => {
     if (!authenticated) {

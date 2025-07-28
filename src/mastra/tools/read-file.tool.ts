@@ -34,6 +34,7 @@ export const readFileTool = createTool({
         files,
       };
     } catch (error: unknown) {
+      console.error("Error reading file: ", error);
       return {
         files: [],
       };

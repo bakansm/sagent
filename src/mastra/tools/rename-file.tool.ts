@@ -34,7 +34,11 @@ export const renameFileTool = createTool({
       );
 
       const resultFiles = files
-        .filter((file) => file && (file.type === "file" || file.type === "dir"))
+        .filter(
+          (file) =>
+            file &&
+            (String(file.type) === "file" || String(file.type) === "dir"),
+        )
         .map((file) => ({
           name: file.name,
           type: file.type as "file" | "dir",
@@ -45,6 +49,7 @@ export const renameFileTool = createTool({
         files: resultFiles,
       };
     } catch (error: unknown) {
+      console.error("Error renaming file: ", error);
       return {
         files: [],
       };
