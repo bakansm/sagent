@@ -1,10 +1,7 @@
 /* eslint-disable */
-
 import { PROMPT } from "@/constants/prompt.constant";
 import { env } from "@/env";
-import { db } from "@/libs/db.lib";
-import { mastra } from "@/mastra";
-import Sandbox from "@e2b/code-interpreter";
+import { Sandbox } from "@e2b/code-interpreter";
 import {
   createAgent,
   createNetwork,
@@ -12,8 +9,9 @@ import {
   gemini,
   type Tool,
 } from "@inngest/agent-kit";
-import { RuntimeContext } from "@mastra/core/runtime-context";
-import { z } from "zod";
+
+import { db } from "@/libs/db.lib";
+import z from "zod";
 import { inngest } from "./client";
 import { getSandbox, lastAssistantTextMessageContent } from "./utils";
 
@@ -23,7 +21,7 @@ interface AgentState {
 }
 
 export const callAgent = inngest.createFunction(
-  { id: "call-agent-corrected" },
+  { id: "call-agent-corrected", concurrency: 5 },
   { event: "agent/call" },
   async ({ event, step }) => {
     const initialMessage = await step.run("setup-environment", () => {
@@ -254,68 +252,5 @@ export const callAgent = inngest.createFunction(
         },
       });
     });
-  },
-);
-
-export const testAgent = inngest.createFunction(
-  { id: "test-agent" },
-  { event: "test/agent" },
-  async ({ event }) => {
-    const { value } = event.data;
-
-    // const agent = mastra.getAgent("summarizing-user-request-agent");
-
-    // const agentResponse = await agent.generate(value);
-
-    // console.log(
-    //   "===================================================================",
-    // );
-    // console.log("agentResponse: ", agentResponse.text);
-    // console.log(
-    //   "===================================================================",
-    // );
-
-    // const result = agentResponse.text;
-
-    const workflow = mastra.getWorkflow("coding-workflow");
-    const workflowRun = await workflow.createRunAsync();
-
-    const workflowResult = workflowRun.stream({
-      inputData: {
-        input: value,
-      },
-    });
-    console.log(
-      "===================================================================",
-    );
-    console.log("workFlowResult", workflowResult);
-    console.log(
-      "===================================================================",
-    );
-
-    for await (const chunk of workflowResult.stream) {
-      console.log(chunk);
-    }
-
-    const result = workflowResult.getWorkflowState();
-
-    // const codingNetwork = mastra.vnext_getNetwork("coding-network");
-
-    // const runtimeContext = new RuntimeContext();
-    // const result = await codingNetwork?.generate(value, {
-    //   runtimeContext,
-    // });
-
-    // console.log(
-    //   "===================================================================",
-    // );
-    // console.log("result", result?.result);
-    // console.log("result status", result?.status);
-    // console.log("result steps", result?.steps);
-    // console.log(
-    //   "===================================================================",
-    // );
-
-    return result;
   },
 );

@@ -1,5 +1,6 @@
 "use client";
 
+import { liskSepolia, sagentTestnet } from "@/configs/chain";
 import { ABI } from "@/constants/abi.constant";
 import { ADDRESS } from "@/constants/address.constant";
 import { api } from "@/trpc/react";
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { parseUnits, type Hex } from "viem";
 import {
+  useChainId,
   useReadContract,
   useWaitForTransactionReceipt,
   useWriteContract,
@@ -32,9 +34,34 @@ const getExplorerLink = (txHash: string) => {
   return `https://sagent-2751288990640000-1.sagaexplorer.io/tx/${txHash}`;
 };
 
+// Helper function to get contract address by chainId
+const getContractAddress = (chainId: number): string => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return ADDRESS.SAGENT_CHAIN.SUBSCRIPTION_MANAGER;
+    case liskSepolia.id:
+      return ADDRESS.LISK_SEPOLIA.SUBSCRIPTION_MANAGER;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+};
+
+// Helper function to get stable coin address by chainId
+const getStableCoinAddress = (chainId: number): string => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return ADDRESS.SAGENT_CHAIN.STABLE_COIN;
+    case liskSepolia.id:
+      return ADDRESS.LISK_SEPOLIA.STABLE_COIN;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+};
+
 export default function SubscriptionCards() {
   const { authenticated, login } = usePrivy();
   const { wallets } = useWallets();
+  const chainId = useChainId();
   const [pendingPlan, setPendingPlan] = useState<PlanType | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [planToConfirm, setPlanToConfirm] = useState<PlanType | null>(null);
@@ -44,7 +71,7 @@ export default function SubscriptionCards() {
 
   const embeddedWallet = getEmbeddedConnectedWallet(wallets);
 
-  const handleSign = useCallback(async () => {
+    const handleSign = useCallback(async () => {
     const provider = await embeddedWallet?.getEthereumProvider();
 
     const result = await provider?.request({
@@ -52,13 +79,13 @@ export default function SubscriptionCards() {
       params: [
         {
           from: embeddedWallet?.address,
-          to: ADDRESS.SUBSCRIPTION_MANAGER,
+          to: getContractAddress(chainId),
         },
       ],
     });
 
     console.log("result: ", result);
-  }, [embeddedWallet]);
+  }, [embeddedWallet, chainId]);
 
   // Get the actual external wallet address (filter out embedded wallet)
   const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
@@ -71,10 +98,10 @@ export default function SubscriptionCards() {
 
   // Check current stablecoin allowance for subscription manager
   const { data: currentAllowance } = useReadContract({
-    address: ADDRESS.STABLE_COIN as Hex,
+    address: getStableCoinAddress(chainId) as Hex,
     abi: ABI.STABLE_COIN,
     functionName: "allowance",
-    args: [walletAddress as Hex, ADDRESS.SUBSCRIPTION_MANAGER as Hex],
+    args: [walletAddress as Hex, getContractAddress(chainId) as Hex],
     query: {
       enabled: !!walletAddress,
     },
@@ -116,7 +143,7 @@ export default function SubscriptionCards() {
     if (!walletAddress || isSyncing) return;
     setIsSyncing(true);
     await syncContractMutation
-      .mutateAsync({ walletAddress })
+      .mutateAsync({ walletAddress, chainId })
       .then(async () => {
         await refetchBillingInfo();
       })
@@ -126,16 +153,22 @@ export default function SubscriptionCards() {
       .finally(() => {
         setIsSyncing(false);
       });
-  }, [walletAddress, isSyncing, syncContractMutation, refetchBillingInfo]);
+  }, [
+    walletAddress,
+    isSyncing,
+    syncContractMutation,
+    refetchBillingInfo,
+    chainId,
+  ]);
 
   // Sync contract status on first load
   useEffect(() => {
     if (authenticated && walletAddress && !isSyncing && !hasSyncedRef.current) {
       setIsSyncing(true);
-      handleSyncContract();
+      void handleSyncContract();
       hasSyncedRef.current = true;
     }
-  }, [authenticated, walletAddress, handleSyncContract]);
+  }, [authenticated, walletAddress, handleSyncContract, isSyncing]);
 
   // Handle transaction success/error
   useEffect(() => {
@@ -155,6 +188,7 @@ export default function SubscriptionCards() {
           plan: pendingPlan,
           transactionHash: txHash,
           walletAddress: walletAddress!,
+          chainId: chainId,
         })
         .then(async (result) => {
           if (result.success) {
@@ -205,6 +239,7 @@ export default function SubscriptionCards() {
     receipt,
     error,
     walletAddress,
+    chainId,
   ]);
 
   const handleSubscribe = useCallback(
@@ -280,10 +315,10 @@ export default function SubscriptionCards() {
 
         // First approve the stablecoin
         const approveTxHash = await writeContractAsync({
-          address: ADDRESS.STABLE_COIN as Hex,
+          address: getStableCoinAddress(chainId) as Hex,
           abi: ABI.STABLE_COIN,
           functionName: "approve",
-          args: [ADDRESS.SUBSCRIPTION_MANAGER as Hex, amount],
+          args: [getContractAddress(chainId) as Hex, amount],
           account: walletAddress as Hex,
         });
 
@@ -317,7 +352,7 @@ export default function SubscriptionCards() {
 
       // Call the subscription function
       const subscriptionTxHash = await writeContractAsync({
-        address: ADDRESS.SUBSCRIPTION_MANAGER as Hex,
+        address: getContractAddress(chainId) as Hex,
         abi: ABI.SUBSCRIPTION_MANAGER,
         functionName: functionName,
         account: walletAddress as Hex,
@@ -347,9 +382,9 @@ export default function SubscriptionCards() {
     }
   };
 
-  const isCurrentPlan = (plan: PlanType) => {
+  const isCurrentPlan = useCallback((plan: PlanType) => {
     return authenticated && billingInfo?.plan === plan;
-  };
+  }, [authenticated, billingInfo?.plan]);
 
   const getButtonText = (plan: PlanType) => {
     if (!authenticated) {

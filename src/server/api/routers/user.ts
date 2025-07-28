@@ -1,4 +1,4 @@
-import { sagentChain } from "@/configs/chain";
+import { liskSepolia, sagentTestnet } from "@/configs/chain";
 import { ABI } from "@/constants/abi.constant";
 import { ADDRESS } from "@/constants/address.constant";
 import { db } from "@/libs/db.lib";
@@ -8,14 +8,33 @@ import {
 } from "@/libs/server-utils.lib";
 import { PlanType } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { createPublicClient, http, type Hex } from "viem";
+import { createPublicClient, http, type Chain, type Hex } from "viem";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 
-const publicClient = createPublicClient({
-  chain: sagentChain,
-  transport: http(),
-});
+// Helper function to get chain configuration by chainId
+const getChainById = (chainId: number): Chain => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return sagentTestnet;
+    case liskSepolia.id:
+      return liskSepolia;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+};
+
+// Helper function to get contract address by chainId
+const getContractAddress = (chainId: number): string => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return ADDRESS.SAGENT_CHAIN.SUBSCRIPTION_MANAGER;
+    case liskSepolia.id:
+      return ADDRESS.LISK_SEPOLIA.SUBSCRIPTION_MANAGER;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+};
 
 // Helper function to convert contract tier to PlanType
 const contractTierToPlanType = (tier: number): PlanType => {
@@ -41,11 +60,21 @@ const isSubscriptionExpired = (endTime: bigint): boolean => {
 async function syncContractStatusToDatabase(
   userId: string,
   walletAddress: string,
+  chainId: number,
 ) {
   try {
+    const chain = getChainById(chainId);
+    const contractAddress = getContractAddress(chainId);
+
+    // Create public client for the specific chain
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(),
+    });
+
     // Read subscription status from contract
     const contractData = (await publicClient.readContract({
-      address: ADDRESS.SUBSCRIPTION_MANAGER as Hex,
+      address: contractAddress as Hex,
       abi: ABI.SUBSCRIPTION_MANAGER,
       functionName: "getMySubscriptionStatus",
       account: walletAddress as Hex,
@@ -147,6 +176,7 @@ export const userRouter = createTRPCRouter({
     .input(
       z.object({
         walletAddress: z.string().min(1, "Wallet address is required"),
+        chainId: z.number().min(1, "Chain ID is required"),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -160,6 +190,7 @@ export const userRouter = createTRPCRouter({
       const result = await syncContractStatusToDatabase(
         ctx.session.userId,
         input.walletAddress,
+        input.chainId,
       );
 
       if (!result.success) {
@@ -214,6 +245,7 @@ export const userRouter = createTRPCRouter({
         plan: z.nativeEnum(PlanType),
         transactionHash: z.string().optional(),
         walletAddress: z.string().optional(),
+        chainId: z.number().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -249,9 +281,15 @@ export const userRouter = createTRPCRouter({
       }
 
       // For paid plans, verify transaction and sync with contract
-      if (input.transactionHash && input.walletAddress) {
+      if (input.transactionHash && input.walletAddress && input.chainId) {
         try {
-          const receipt = await publicClient.waitForTransactionReceipt({
+          const chain = getChainById(input.chainId);
+          const contractAddress = getContractAddress(input.chainId);
+
+          const receipt = await createPublicClient({
+            chain,
+            transport: http(),
+          }).waitForTransactionReceipt({
             hash: input.transactionHash as Hex,
           });
 
@@ -263,10 +301,7 @@ export const userRouter = createTRPCRouter({
           }
 
           // Verify the transaction was to our contract
-          if (
-            receipt.to?.toLowerCase() !==
-            ADDRESS.SUBSCRIPTION_MANAGER.toLowerCase()
-          ) {
+          if (receipt.to?.toLowerCase() !== contractAddress.toLowerCase()) {
             return {
               success: false,
               error:
@@ -278,6 +313,7 @@ export const userRouter = createTRPCRouter({
           const syncResult = await syncContractStatusToDatabase(
             ctx.session.userId,
             input.walletAddress,
+            input.chainId,
           );
 
           if (!syncResult.success) {

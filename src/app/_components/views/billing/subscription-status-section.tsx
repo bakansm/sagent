@@ -16,11 +16,13 @@ import {
   TrendingUpIcon,
 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useChainId } from "wagmi";
 
 export default function SubscriptionStatusSection() {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
   const [isSyncing, setIsSyncing] = useState(false);
+  const chainId = useChainId();
 
   // Get the actual external wallet address (filter out embedded wallet)
   const embeddedWalletAddress = getEmbeddedConnectedWallet(wallets)?.address;
@@ -30,11 +32,6 @@ export default function SubscriptionStatusSection() {
 
   // Prefer external wallet, but fallback to embedded if that's all we have
   const walletAddress = externalWallet?.address ?? embeddedWalletAddress;
-
-  console.log("wallets: ", wallets);
-  console.log("embeddedWalletAddress: ", embeddedWalletAddress);
-  console.log("externalWallet: ", externalWallet);
-  console.log("walletAddress: ", walletAddress);
 
   // Get user data from database
   const { data: user } = api.user.getUser.useQuery(undefined, {
@@ -55,14 +52,20 @@ export default function SubscriptionStatusSection() {
 
     setIsSyncing(true);
     try {
-      await syncContractMutation.mutateAsync({ walletAddress });
+      await syncContractMutation.mutateAsync({ walletAddress, chainId });
       await refetchBillingInfo();
     } catch (error) {
       console.error("Failed to sync contract status:", error);
     } finally {
       setIsSyncing(false);
     }
-  }, [walletAddress, isSyncing, syncContractMutation, refetchBillingInfo]);
+  }, [
+    walletAddress,
+    isSyncing,
+    syncContractMutation,
+    refetchBillingInfo,
+    chainId,
+  ]);
 
   const formatTimestamp = (date: Date | string | null) => {
     if (!date) return null;

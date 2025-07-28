@@ -1,4 +1,3 @@
-import { realtimeMiddleware } from "@inngest/realtime";
 import { Inngest } from "inngest";
 
 // Create a client to send and receive events
@@ -11,5 +10,4 @@ export const inngest = new Inngest({
       ? "https://api.inngest.com"
       : "http://127.0.0.1:8288",
   isDev: process.env.NODE_ENV === "development",
-  middleware: [realtimeMiddleware()],
 });

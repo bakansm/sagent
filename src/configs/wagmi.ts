@@ -1,9 +1,11 @@
+import { liskSepolia } from "viem/chains";
 import { createConfig, http } from "wagmi";
-import { sagentChain } from "./chain";
+import { sagentTestnet } from "./chain";
 
 export const config = createConfig({
-  chains: [sagentChain],
+  chains: [sagentTestnet, liskSepolia],
   transports: {
-    [sagentChain.id]: http(),
+    [sagentTestnet.id]: http(),
+    [liskSepolia.id]: http(),
   },
 });

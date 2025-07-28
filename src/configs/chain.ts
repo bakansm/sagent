@@ -1,8 +1,8 @@
 import { defineChain } from "viem";
 
-export const sagentChain = defineChain({
+export const sagentTestnet = defineChain({
   id: 2751288990640000,
-  name: "Sagent",
+  name: "Sagent Testnet",
   nativeCurrency: {
     name: "Sagent",
     symbol: "SAG",
@@ -18,6 +18,28 @@ export const sagentChain = defineChain({
     default: {
       name: "Sagent Explorer",
       url: "https://sagent-2751288990640000-1.sagaexplorer.io",
+    },
+  },
+});
+
+export const liskSepolia = defineChain({
+  id: 4202,
+  name: "Lisk Sepolia Testnet",
+  nativeCurrency: {
+    name: "Ethereum",
+    symbol: "ETH",
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ["https://rpc.sepolia-api.lisk.com"],
+      webSocket: ["wss://rpc.sepolia-api.lisk.com"],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Lisk Sepolia Explorer",
+      url: "https://sepolia-blockscout.lisk.com",
     },
   },
 });
