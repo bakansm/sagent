@@ -269,9 +269,22 @@ export default function SubscriptionCards() {
       const functionName =
         planToConfirm === PlanType.PRO ? "subscribePro" : "subscribePremium";
 
+      const amount = planToConfirm === PlanType.PRO ? "19000000" : "39000000"; // SUSDC has 6 decimals
+
+      toast.info("Approving token spending...");
+
+      // Step 1: Approve token spending
+      await writeContractAsync({
+        address: ADDRESS.LISK_SEPOLIA.STABLE_COIN as Hex, // or get by chainId
+        abi: ABI.STABLE_COIN,
+        functionName: "approve",
+        args: [getContractAddress(chainId) as Hex, BigInt(amount)],
+        account: walletAddress as Hex,
+      });
+
       toast.info("Submitting subscription transaction...");
 
-      // Call the subscription function directly (no approval needed)
+      // Step 2: Subscribe
       const subscriptionTxHash = await writeContractAsync({
         address: getContractAddress(chainId) as Hex,
         abi: ABI.SUBSCRIPTION_MANAGER,
