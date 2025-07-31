@@ -308,8 +308,6 @@ export default function SubscriptionCards() {
         }
       };
 
-      toast.info("Approving token spending...");
-
       // Step 1: Approve token spending
       const approvalTxHash = await writeContractAsync({
         address: getStableCoinAddress(chainId) as Hex,
@@ -318,8 +316,6 @@ export default function SubscriptionCards() {
         args: [getContractAddress(chainId) as Hex, BigInt(amount)],
         account: walletAddress as Hex,
       });
-
-      toast.info("Waiting for approval confirmation...");
 
       // Create a dedicated public client for this chain to wait for transaction
       const chainConfig = getChainConfig(chainId);
@@ -346,18 +342,10 @@ export default function SubscriptionCards() {
             console.error("RPC error waiting for approval receipt:", error);
 
             // Fallback: Wait a fixed time and proceed
-            toast.info(
-              "RPC connection issues. Waiting 15 seconds before proceeding...",
-            );
             await new Promise((resolve) => setTimeout(resolve, 15000));
-
-            toast.info("Proceeding with subscription transaction...");
             break; // Exit retry loop and proceed
           }
 
-          toast.info(
-            `Retrying approval confirmation... (${retryCount}/${maxRetries})`,
-          );
           await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
         }
       }
@@ -366,8 +354,6 @@ export default function SubscriptionCards() {
       if (approvalReceipt && approvalReceipt.status !== "success") {
         throw new Error("Approval transaction failed");
       }
-
-      toast.info("Submitting subscription transaction...");
 
       // Step 2: Subscribe (this will be tracked by the useWaitForTransactionReceipt hook)
       await writeContractAsync({
