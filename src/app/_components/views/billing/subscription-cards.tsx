@@ -12,7 +12,7 @@ import {
 } from "@privy-io/react-auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { type Hex } from "viem";
+import { createPublicClient, http, type Hex } from "viem";
 import {
   useChainId,
   useWaitForTransactionReceipt,
@@ -37,6 +37,18 @@ const getExplorerLink = (txHash: string, chainId: number) => {
       return `https://sepolia-blockscout.lisk.com/tx/${txHash}`;
     default:
       return `https://sepolia-blockscout.lisk.com/tx/${txHash}`;
+  }
+};
+
+// Helper function to get chain configuration
+const getChainConfig = (chainId: number) => {
+  switch (chainId) {
+    case sagentTestnet.id:
+      return sagentTestnet;
+    case liskSepolia.id:
+      return liskSepolia;
+    default:
+      throw new Error(`Unsupported chain ID: ${chainId}`);
   }
 };
 
@@ -238,7 +250,6 @@ export default function SubscriptionCards() {
             toast.error(result.error);
           }
         } catch (error) {
-          console.log(error);
           toast.error("Failed to switch to free plan");
         }
         return;
@@ -269,43 +280,104 @@ export default function SubscriptionCards() {
       const functionName =
         planToConfirm === PlanType.PRO ? "subscribePro" : "subscribePremium";
 
-      const amount = planToConfirm === PlanType.PRO ? "19000000" : "39000000"; // SUSDC has 6 decimals
+      // Get the actual prices from the contract
+      const priceChainConfig = getChainConfig(chainId);
+      const priceClient = createPublicClient({
+        chain: priceChainConfig,
+        transport: http(),
+      });
+
+      const contractPrice = await priceClient.readContract({
+        address: getContractAddress(chainId) as Hex,
+        abi: ABI.SUBSCRIPTION_MANAGER,
+        functionName:
+          planToConfirm === PlanType.PRO ? "PRO_PRICE" : "PREMIUM_PRICE",
+      });
+
+      const amount = contractPrice.toString();
+
+      // Helper function to get stable coin address
+      const getStableCoinAddress = (chainId: number): string => {
+        switch (chainId) {
+          case sagentTestnet.id:
+            return ADDRESS.SAGENT_CHAIN.STABLE_COIN;
+          case liskSepolia.id:
+            return ADDRESS.LISK_SEPOLIA.STABLE_COIN;
+          default:
+            throw new Error(`Unsupported chain ID: ${chainId}`);
+        }
+      };
 
       toast.info("Approving token spending...");
 
       // Step 1: Approve token spending
-      await writeContractAsync({
-        address: ADDRESS.LISK_SEPOLIA.STABLE_COIN as Hex, // or get by chainId
+      const approvalTxHash = await writeContractAsync({
+        address: getStableCoinAddress(chainId) as Hex,
         abi: ABI.STABLE_COIN,
         functionName: "approve",
         args: [getContractAddress(chainId) as Hex, BigInt(amount)],
         account: walletAddress as Hex,
       });
 
+      toast.info("Waiting for approval confirmation...");
+
+      // Create a dedicated public client for this chain to wait for transaction
+      const chainConfig = getChainConfig(chainId);
+      const approvalClient = createPublicClient({
+        chain: chainConfig,
+        transport: http(),
+      });
+
+      // Wait for approval transaction with retry mechanism
+      let approvalReceipt;
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      while (retryCount < maxRetries) {
+        try {
+          approvalReceipt = await approvalClient.waitForTransactionReceipt({
+            hash: approvalTxHash,
+            timeout: 30_000, // 30 seconds timeout
+          });
+          break; // Success, exit retry loop
+        } catch (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            console.error("RPC error waiting for approval receipt:", error);
+
+            // Fallback: Wait a fixed time and proceed
+            toast.info(
+              "RPC connection issues. Waiting 15 seconds before proceeding...",
+            );
+            await new Promise((resolve) => setTimeout(resolve, 15000));
+
+            toast.info("Proceeding with subscription transaction...");
+            break; // Exit retry loop and proceed
+          }
+
+          toast.info(
+            `Retrying approval confirmation... (${retryCount}/${maxRetries})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
+        }
+      }
+
+      // If we got a receipt, verify it succeeded
+      if (approvalReceipt && approvalReceipt.status !== "success") {
+        throw new Error("Approval transaction failed");
+      }
+
       toast.info("Submitting subscription transaction...");
 
-      // Step 2: Subscribe
-      const subscriptionTxHash = await writeContractAsync({
+      // Step 2: Subscribe (this will be tracked by the useWaitForTransactionReceipt hook)
+      await writeContractAsync({
         address: getContractAddress(chainId) as Hex,
         abi: ABI.SUBSCRIPTION_MANAGER,
         functionName: functionName,
         account: walletAddress as Hex,
       });
 
-      toast.success(
-        <div>
-          <div>Subscription transaction submitted!</div>
-          <a
-            href={getExplorerLink(subscriptionTxHash, chainId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 underline hover:text-blue-800"
-          >
-            View on Explorer: {subscriptionTxHash.slice(0, 10)}...
-            {subscriptionTxHash.slice(-8)}
-          </a>
-        </div>,
-      );
+      // Success toast will be shown by the useEffect when transaction confirms
     } catch (error: unknown) {
       console.error("Subscription failed:", error);
       toast.error("Transaction failed. Please try again.");
@@ -331,8 +403,13 @@ export default function SubscriptionCards() {
       return "Current Plan";
     }
 
-    if (pendingPlan === plan && (isWritingContract || isConfirming)) {
-      return isWritingContract ? "Confirming..." : "Processing...";
+    if (pendingPlan === plan) {
+      if (isWritingContract) {
+        return "Confirming Transaction...";
+      }
+      if (isConfirming) {
+        return "Processing...";
+      }
     }
 
     if (subscribeMutation.isPending) {
